@@ -21,11 +21,14 @@ use ed25519_dalek;
 use libra_crypto::{hash::HashValue, hkdf::Hkdf};
 use serde::{Deserialize, Serialize};
 use sha3::Sha3_256;
-use std::{convert::TryFrom, ops::AddAssign};
+use std::{convert::TryFrom, ops::AddAssign, collections::HashMap};
 use tiny_keccak::Keccak;
 use types::account_address::AccountAddress;
+use two_party_eddsa_client::api::*;
+use curve25519_dalek::edwards::CompressedEdwardsY;
+use curve25519_dalek::scalar::Scalar;
 
-use crate::{error::Result, mnemonic::Mnemonic};
+use crate::error::Result;
 
 /// Master is a set of raw bytes that are used for child key derivation
 pub struct Master([u8; 32]);
@@ -68,27 +71,30 @@ impl std::convert::AsMut<u64> for ChildNumber {
 }
 
 /// Derived private key.
+// TODO: delete after debugging
+#[derive(Debug, Clone)]
 pub struct ExtendedPrivKey {
-    /// Child number of the key used to derive from Parent.
-    _child_number: ChildNumber,
-    /// Private key.
-    private_key: ed25519_dalek::SecretKey,
+    client_shim: ClientShim,
+    key_pair: KeyPair,
+    aggregated_public_key: KeyAgg,
+    id: String,
 }
 
 impl ExtendedPrivKey {
-    /// Constructor for creating an ExtendedPrivKey from a ed25519 PrivateKey. Note that the
-    /// ChildNumber are not used in this iteration of LibraWallet, but in order to
-    /// enable more general Hierarchical KeyDerivation schemes, we include it for completeness.
-    pub fn new(_child_number: ChildNumber, private_key: ed25519_dalek::SecretKey) -> Self {
+    pub fn new(client_shim: ClientShim, key_pair: KeyPair, aggregated_public_key: KeyAgg, id: String) -> Self {
         Self {
-            _child_number,
-            private_key,
+            client_shim,
+            key_pair,
+            aggregated_public_key,
+            id,
         }
     }
 
-    /// Returns the PublicKey associated to a particular ExtendedPrivKey
     pub fn get_public(&self) -> ed25519_dalek::PublicKey {
-        (&self.private_key).into()
+        let public_key_bytes = hex::decode(self.aggregated_public_key.apk.bytes_compressed_to_big_int().to_hex()).unwrap();
+        println!("ExtendedPrivKey::get_public - public_key_bytes = {:?}", public_key_bytes);
+        ed25519_dalek::PublicKey::from_bytes(&public_key_bytes.as_slice())
+            .expect("Error while creating public key from bytes")
     }
 
     /// Computes the sha3 hash of the PublicKey and attempts to construct a Libra AccountAddress
@@ -103,6 +109,7 @@ impl ExtendedPrivKey {
         Ok(addr)
     }
 
+
     /// Libra specific sign function that is capable of signing an arbitrary HashValue
     /// NOTE: In Libra, we do not sign the raw bytes of a transaction, instead we sign the raw
     /// bytes of the sha3 hash of the raw bytes of a transaction. It is important to note that the
@@ -110,78 +117,60 @@ impl ExtendedPrivKey {
     /// In other words: In Libra, the message used for signature and verification is the sha3 hash
     /// of the transaction. This sha3 hash is then hashed again using SHA512 to arrive at the
     /// deterministic nonce for the EdDSA.
+    /// TODO: check if there's no need to do SHA3 here
     pub fn sign(&self, msg: HashValue) -> ed25519_dalek::Signature {
-        let public_key: ed25519_dalek::PublicKey = (&self.private_key).into();
-        let expanded_secret_key: ed25519_dalek::ExpandedSecretKey =
-            ed25519_dalek::ExpandedSecretKey::from(&self.private_key);
-        expanded_secret_key.sign(msg.as_ref(), &public_key)
+        let message = BigInt::from(msg.to_vec().as_slice());
+        println!("ExtendedPrivKey::sign - message = {:?}", message);
+        let signature = two_party_eddsa_client::api::sign(&self.client_shim, message, &self.key_pair, &self.aggregated_public_key, &self.id)
+            .expect("Error while signing");
+        let R: CompressedEdwardsY = CompressedEdwardsY(hex::decode(signature.R.bytes_compressed_to_big_int().to_hex()).unwrap().as_slice().clone());
+        let s: Scalar = Scalar::from_bytes_mod_order(hex::decode(signature.s.to_big_int().to_hex()).unwrap().as_slice().clone());
+
+        ed25519_dalek::Signature {
+            R,
+            s
+        }
     }
 }
 
 /// Wrapper struct from which we derive child keys
 pub struct KeyFactory {
-    master: Master,
+    client_shim: ClientShim,
+    children: HashMap<u64, ExtendedPrivKey>,
 }
 
 impl KeyFactory {
-    const MNEMONIC_SALT_PREFIX: &'static [u8] = b"LIBRA WALLET: mnemonic salt prefix$";
-    const MASTER_KEY_SALT: &'static [u8] = b"LIBRA WALLET: master key salt$";
-    const INFO_PREFIX: &'static [u8] = b"LIBRA WALLET: derived key$";
-    /// Instantiate a new KeyFactor from a Seed, where the [u8; 64] raw bytes of the Seed are used
-    /// to derive both the Master
-    pub fn new(seed: &Seed) -> Result<Self> {
-        let hkdf_extract = Hkdf::<Sha3_256>::extract(Some(KeyFactory::MASTER_KEY_SALT), &seed.0)?;
+
+    pub fn new() -> Result<Self> {
+        let client_shim = ClientShim::new("http://localhost:8000".to_string());
+        let children = HashMap::new();
 
         Ok(Self {
-            master: Master::from(&hkdf_extract[..32]),
+            client_shim,
+            children
         })
     }
 
-    /// Getter for the Master
-    pub fn master(&self) -> &[u8] {
-        &self.master.0[..]
-    }
-
-    /// Derive a particular PrivateKey at a certain ChildNumber
-    ///
-    /// Note that the function below  adheres to [HKDF RFC 5869](https://tools.ietf.org/html/rfc5869).
-    pub fn private_child(&self, child: ChildNumber) -> Result<ExtendedPrivKey> {
-        // application info in the HKDF context is defined as Libra derived key$child_number.
-        let mut le_n = [0u8; 8];
-        LittleEndian::write_u64(&mut le_n, child.0);
-        let mut info = KeyFactory::INFO_PREFIX.to_vec();
-        info.extend_from_slice(&le_n);
-
-        let hkdf_expand = Hkdf::<Sha3_256>::expand(&self.master(), Some(&info), 32)?;
-        let sk = ed25519_dalek::SecretKey::from_bytes(&hkdf_expand)?;
-
-        Ok(ExtendedPrivKey::new(child, sk))
-    }
-}
-
-/// Seed is the output of a one-way function, which accepts a Mnemonic as input
-pub struct Seed([u8; 32]);
-
-impl Seed {
-    /// Get the underlying Seed internal data
-    pub fn data(&self) -> Vec<u8> {
-        self.0.to_vec()
-    }
-}
-
-impl Seed {
-    /// This constructor implements the one-way function that allows to generate a Seed from a
-    /// particular Mnemonic and salt. WalletLibrary implements a fixed salt, but a user could
-    /// choose a user-defined salt instead of the hardcoded one.
-    pub fn new(mnemonic: &Mnemonic, salt: &str) -> Seed {
-        let mut mac = CryptoHmac::new(Sha3::sha3_256(), mnemonic.to_string().as_bytes());
-        let mut output = [0u8; 32];
-
-        let mut msalt = KeyFactory::MNEMONIC_SALT_PREFIX.to_vec();
-        msalt.extend_from_slice(salt.as_bytes());
-
-        pbkdf2(&mut mac, &msalt, 2048, &mut output);
-        Seed(output)
+    pub fn private_child(&mut self, child_number: ChildNumber) -> Result<ExtendedPrivKey> {
+        match self.children.get(child_number.as_ref()) {
+            Some(extended_priv_key) => {
+                println!("found child! {:?}", extended_priv_key);
+                Ok(extended_priv_key.clone())
+            },
+            None => {
+                println!("generating a child key!");
+                let (key_pair, aggregated_public_key, id) = two_party_eddsa_client::api::generate_key(&self.client_shim).unwrap();
+                let extended_priv_key = ExtendedPrivKey {
+                    client_shim: self.client_shim.clone(),
+                    key_pair,
+                    aggregated_public_key,
+                    id
+                };
+                println!("generated: {:?}", extended_priv_key);
+                self.children.insert(child_number.as_ref().clone(), extended_priv_key);
+                Ok(extended_priv_key.clone())
+            }
+        }
     }
 }
 

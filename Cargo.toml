@@ -46,6 +46,7 @@ members = [
     "network/netcore",
     "network/noise",
     "mempool",
+    "server",
     "storage/accumulator",
     "storage/libradb",
     "storage/schemadb",

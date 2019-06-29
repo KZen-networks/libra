@@ -14,8 +14,7 @@
 use crate::{
     error::*,
     io_utils,
-    key_factory::{ChildNumber, KeyFactory, Seed},
-    mnemonic::Mnemonic,
+    key_factory::{ChildNumber, KeyFactory},
 };
 use libra_crypto::hash::CryptoHash;
 use proto_conv::{FromProto, IntoProto};
@@ -30,7 +29,6 @@ use types::{
 
 /// WalletLibrary contains all the information needed to recreate a particular wallet
 pub struct WalletLibrary {
-    mnemonic: Mnemonic,
     key_factory: KeyFactory,
     addr_map: HashMap<AccountAddress, ChildNumber>,
     key_leaf: ChildNumber,
@@ -43,25 +41,11 @@ impl WalletLibrary {
     pub fn new() -> Self {
         let mut rng = EntropyRng::new();
         let data: [u8; 32] = rng.gen();
-        let mnemonic = Mnemonic::mnemonic(&data).unwrap();
-        Self::new_from_mnemonic(mnemonic)
-    }
-
-    /// Constructor that instantiates a new WalletLibrary from Mnemonic
-    pub fn new_from_mnemonic(mnemonic: Mnemonic) -> Self {
-        let seed = Seed::new(&mnemonic, "LIBRA");
-        WalletLibrary {
-            mnemonic,
-            key_factory: KeyFactory::new(&seed).unwrap(),
+        Self {
+            key_factory: KeyFactory::new().unwrap(),
             addr_map: HashMap::new(),
             key_leaf: ChildNumber(0),
         }
-    }
-
-    /// Function that returns the string representation of the WalletLibrary Menmonic
-    /// NOTE: This is not secure, and in general the mnemonic should be stored in encrypted format
-    pub fn mnemonic(&self) -> String {
-        self.mnemonic.to_string()
     }
 
     /// Function that writes the wallet Mnemonic to file
@@ -151,16 +135,19 @@ impl WalletLibrary {
     /// associated to a particular AccountAddress. If the PrivateKey associated to an
     /// AccountAddress is not contained in the addr_map, then this function will return an Error
     pub fn sign_txn(
-        &self,
+        &mut self,
         addr: &AccountAddress,
         txn: RawTransaction,
     ) -> Result<SignedTransaction> {
         if let Some(child) = self.addr_map.get(addr) {
             let raw_bytes = txn.into_proto().write_to_bytes()?;
             let txn_hashvalue = RawTransactionBytes(&raw_bytes).hash();
+            println!("txn_hashvalue = {}", txn_hashvalue);
+            println!("txn_hashvalue.to_vec() (hex) = {:02x?}", txn_hashvalue.to_vec());
 
             let child_key = self.key_factory.private_child(child.clone())?;
             let signature = child_key.sign(txn_hashvalue);
+            println!("signature = {:02x?}", signature);
             let public_key = child_key.get_public();
 
             let mut signed_txn = ProtoSignedTransaction::new();

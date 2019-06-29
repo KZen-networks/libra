@@ -1,0 +1,14 @@
+[package]
+name = "server"
+version = "0.1.0"
+authors = ["Oded Leiba <oded@kzencorp.com>"]
+license = "Apache-2.0"
+publish = false
+edition = "2018"
+
+[[bin]]
+name = "server_exec"
+path = "src/main.rs"
+
+[dependencies]
+two-party-eddsa-server = { path = "../../two-party-eddsa-wrapper/server" }
