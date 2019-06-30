@@ -25,8 +25,7 @@ use std::{convert::TryFrom, ops::AddAssign, collections::HashMap};
 use tiny_keccak::Keccak;
 use types::account_address::AccountAddress;
 use two_party_eddsa_client::api::*;
-use curve25519_dalek::edwards::CompressedEdwardsY;
-use curve25519_dalek::scalar::Scalar;
+use hex::FromHex;
 
 use crate::error::Result;
 
@@ -123,14 +122,33 @@ impl ExtendedPrivKey {
         println!("ExtendedPrivKey::sign - message = {:?}", message);
         let signature = two_party_eddsa_client::api::sign(&self.client_shim, message, &self.key_pair, &self.aggregated_public_key, &self.id)
             .expect("Error while signing");
-        let R: CompressedEdwardsY = CompressedEdwardsY(hex::decode(signature.R.bytes_compressed_to_big_int().to_hex()).unwrap().as_slice().clone());
-        let s: Scalar = Scalar::from_bytes_mod_order(hex::decode(signature.s.to_big_int().to_hex()).unwrap().as_slice().clone());
-
-        ed25519_dalek::Signature {
-            R,
-            s
+        println!("R = {:?}", signature.R.bytes_compressed_to_big_int().to_hex());
+        let R = format!("{:0>64}", signature.R.bytes_compressed_to_big_int().to_hex());
+        println!("R = {:?}", R);
+        let s_src = hex::decode(format!("{:0>64}",signature.s.to_big_int().to_hex())).unwrap();
+        println!("s_src = {:?}", s_src);
+        let mut s_dst: [u8; 32] = [0; 32];
+        for i in 0..32 {
+            println!("{}: copying {:?}", i, s_src[31 - i]);
+            s_dst[i] = s_src[31 - i];
         }
+        println!("s_dst = {:?}", s_dst);
+        let s = format!("{}", hex::encode(s_dst));
+        println!("s = {}", s);
+
+        let v = Vec::from_hex(format!("{}{}", R, s)).unwrap();
+        println!("vec = {:x?}", v.as_slice());
+
+        ed25519_dalek::Signature::from_bytes(v.as_slice()).unwrap()
     }
+}
+
+fn vector_as_u8_32_array(vector: Vec<u8>) -> [u8; 32] {
+    let mut arr = [0u8;32];
+    for (place, element) in arr.iter_mut().zip(vector.iter()) {
+        *place = *element;
+    }
+    arr
 }
 
 /// Wrapper struct from which we derive child keys
@@ -167,7 +185,7 @@ impl KeyFactory {
                     id
                 };
                 println!("generated: {:?}", extended_priv_key);
-                self.children.insert(child_number.as_ref().clone(), extended_priv_key);
+                self.children.insert(child_number.as_ref().clone(), extended_priv_key.clone());
                 Ok(extended_priv_key.clone())
             }
         }

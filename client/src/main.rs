@@ -5,7 +5,6 @@ use client::{client_proxy::ClientProxy, commands::*};
 use logger::set_default_global_logger;
 use rustyline::{config::CompletionType, error::ReadlineError, Config, Editor};
 use structopt::StructOpt;
-use two_party_eddsa_client::api::*;
 
 #[derive(Debug, StructOpt)]
 #[structopt(

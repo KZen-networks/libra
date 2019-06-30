@@ -309,9 +309,9 @@ impl ClientProxy {
         let resp;
         {
             println!("transfer_coins_int");
-            let sender = self.accounts.get(sender_account_ref_id).ok_or_else(|| {
+            let sender = &self.accounts.get(sender_account_ref_id).ok_or_else(|| {
                 format_err!("Unable to find sender account: {}", sender_account_ref_id)
-            })?;
+            })?.clone();
 
             let program = vm_genesis::encode_transfer_program(&receiver_address, num_coins);
             let req = self.create_submit_transaction_req(
@@ -734,7 +734,7 @@ impl ClientProxy {
         is_blocking: bool,
     ) -> Result<()> {
         ensure!(self.faucet_account.is_some(), "No faucet account loaded");
-        let sender = self.faucet_account.as_ref().unwrap();
+        let sender = &self.faucet_account.as_ref().unwrap().clone();
         let sender_address = sender.address;
         let program = vm_genesis::encode_mint_program(&receiver, num_coins);
         let req = self.create_submit_transaction_req(
@@ -811,7 +811,7 @@ impl ClientProxy {
 
     /// Craft a transaction request.
     pub fn create_submit_transaction_req(
-        &self,
+        &mut self,
         program: Program,
         sender_account: &AccountData,
         gas_unit_price: Option<u64>,
