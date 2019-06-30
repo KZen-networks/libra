@@ -308,7 +308,6 @@ impl ClientProxy {
         let sender_sequence;
         let resp;
         {
-            println!("transfer_coins_int");
             let sender = &self.accounts.get(sender_account_ref_id).ok_or_else(|| {
                 format_err!("Unable to find sender account: {}", sender_account_ref_id)
             })?.clone();
@@ -347,7 +346,6 @@ impl ClientProxy {
         space_delim_strings: &[&str],
         is_blocking: bool,
     ) -> Result<IndexAndSequence> {
-        println!("transfer_coins");
         ensure!(
             space_delim_strings.len() >= 4 && space_delim_strings.len() <= 6,
             "Invalid number of arguments for transfer"
@@ -817,7 +815,6 @@ impl ClientProxy {
         gas_unit_price: Option<u64>,
         max_gas_amount: Option<u64>,
     ) -> Result<SubmitTransactionRequest> {
-        println!("create_submit_transaction_req");
         let raw_txn = RawTransaction::new(
             sender_account.address,
             sender_account.sequence_number,

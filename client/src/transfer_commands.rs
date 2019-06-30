@@ -37,7 +37,7 @@ impl Command for TransferCommand {
                 if is_blocking {
                     println!("Finished transaction!");
                 } else {
-                    println!("Transaction submitted to validator (Oded's change)");
+                    println!("Transaction submitted to validator");
                 }
                 println!(
                     "To query for transaction status, run: query txn_acc_seq {} {} \

@@ -19,7 +19,6 @@ use crate::{
 use libra_crypto::hash::CryptoHash;
 use proto_conv::{FromProto, IntoProto};
 use protobuf::Message;
-use rand::{rngs::EntropyRng, Rng};
 use std::{collections::HashMap, path::Path};
 use types::{
     account_address::AccountAddress,
@@ -39,8 +38,6 @@ impl WalletLibrary {
     /// empty WalletLibrary from that Mnemonic
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        let mut rng = EntropyRng::new();
-        let data: [u8; 32] = rng.gen();
         Self {
             key_factory: KeyFactory::new().unwrap(),
             addr_map: HashMap::new(),
@@ -142,12 +139,9 @@ impl WalletLibrary {
         if let Some(child) = self.addr_map.get(addr) {
             let raw_bytes = txn.into_proto().write_to_bytes()?;
             let txn_hashvalue = RawTransactionBytes(&raw_bytes).hash();
-            println!("txn_hashvalue = {}", txn_hashvalue);
-            println!("txn_hashvalue.to_vec() (hex) = {:02x?}", txn_hashvalue.to_vec());
 
             let child_key = self.key_factory.private_child(child.clone())?;
             let signature = child_key.sign(txn_hashvalue);
-            println!("signature = {:02x?}", signature);
             let public_key = child_key.get_public();
 
             let mut signed_txn = ProtoSignedTransaction::new();

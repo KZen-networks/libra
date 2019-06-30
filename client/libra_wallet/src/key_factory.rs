@@ -15,12 +15,9 @@
 //! Note further that the Key Derivation Function (KDF) chosen in the derivation of Child
 //! Private Keys adheres to [HKDF RFC 5869](https://tools.ietf.org/html/rfc5869).
 
-use byteorder::{ByteOrder, LittleEndian};
-use crypto::{hmac::Hmac as CryptoHmac, pbkdf2::pbkdf2, sha3::Sha3};
 use ed25519_dalek;
-use libra_crypto::{hash::HashValue, hkdf::Hkdf};
+use libra_crypto::{hash::HashValue};
 use serde::{Deserialize, Serialize};
-use sha3::Sha3_256;
 use std::{convert::TryFrom, ops::AddAssign, collections::HashMap};
 use tiny_keccak::Keccak;
 use types::account_address::AccountAddress;
@@ -91,7 +88,6 @@ impl ExtendedPrivKey {
 
     pub fn get_public(&self) -> ed25519_dalek::PublicKey {
         let public_key_bytes = hex::decode(self.aggregated_public_key.apk.bytes_compressed_to_big_int().to_hex()).unwrap();
-        println!("ExtendedPrivKey::get_public - public_key_bytes = {:?}", public_key_bytes);
         ed25519_dalek::PublicKey::from_bytes(&public_key_bytes.as_slice())
             .expect("Error while creating public key from bytes")
     }
@@ -116,39 +112,23 @@ impl ExtendedPrivKey {
     /// In other words: In Libra, the message used for signature and verification is the sha3 hash
     /// of the transaction. This sha3 hash is then hashed again using SHA512 to arrive at the
     /// deterministic nonce for the EdDSA.
-    /// TODO: check if there's no need to do SHA3 here
+    #[allow(non_snake_case)]
     pub fn sign(&self, msg: HashValue) -> ed25519_dalek::Signature {
         let message = BigInt::from(msg.to_vec().as_slice());
-        println!("ExtendedPrivKey::sign - message = {:?}", message);
         let signature = two_party_eddsa_client::api::sign(&self.client_shim, message, &self.key_pair, &self.aggregated_public_key, &self.id)
             .expect("Error while signing");
-        println!("R = {:?}", signature.R.bytes_compressed_to_big_int().to_hex());
         let R = format!("{:0>64}", signature.R.bytes_compressed_to_big_int().to_hex());
-        println!("R = {:?}", R);
         let s_src = hex::decode(format!("{:0>64}",signature.s.to_big_int().to_hex())).unwrap();
-        println!("s_src = {:?}", s_src);
+        // to little endian
         let mut s_dst: [u8; 32] = [0; 32];
         for i in 0..32 {
-            println!("{}: copying {:?}", i, s_src[31 - i]);
             s_dst[i] = s_src[31 - i];
         }
-        println!("s_dst = {:?}", s_dst);
         let s = format!("{}", hex::encode(s_dst));
-        println!("s = {}", s);
-
         let v = Vec::from_hex(format!("{}{}", R, s)).unwrap();
-        println!("vec = {:x?}", v.as_slice());
 
         ed25519_dalek::Signature::from_bytes(v.as_slice()).unwrap()
     }
-}
-
-fn vector_as_u8_32_array(vector: Vec<u8>) -> [u8; 32] {
-    let mut arr = [0u8;32];
-    for (place, element) in arr.iter_mut().zip(vector.iter()) {
-        *place = *element;
-    }
-    arr
 }
 
 /// Wrapper struct from which we derive child keys
@@ -172,11 +152,9 @@ impl KeyFactory {
     pub fn private_child(&mut self, child_number: ChildNumber) -> Result<ExtendedPrivKey> {
         match self.children.get(child_number.as_ref()) {
             Some(extended_priv_key) => {
-                println!("found child! {:?}", extended_priv_key);
                 Ok(extended_priv_key.clone())
             },
             None => {
-                println!("generating a child key!");
                 let (key_pair, aggregated_public_key, id) = two_party_eddsa_client::api::generate_key(&self.client_shim).unwrap();
                 let extended_priv_key = ExtendedPrivKey {
                     client_shim: self.client_shim.clone(),
@@ -184,7 +162,6 @@ impl KeyFactory {
                     aggregated_public_key,
                     id
                 };
-                println!("generated: {:?}", extended_priv_key);
                 self.children.insert(child_number.as_ref().clone(), extended_priv_key.clone());
                 Ok(extended_priv_key.clone())
             }
