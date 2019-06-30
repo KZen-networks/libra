@@ -7,6 +7,30 @@
 [![CircleCI](https://circleci.com/gh/libra/libra.svg?style=shield)](https://circleci.com/gh/libra/libra)
 [![License](https://img.shields.io/badge/license-Apache-green.svg)](LICENSE.md)
 
+------
+**This is a forked repository to support _two-party signing_ in Libra**.<br>
+It allows a more secure key management paradigm to protect your Libra funds:<br>
+we move away the concept of a single _seed_, and instead support the co-signing between the _client_ and a _server_, each with an independently generated secret share.  
+Both shares are required to produce a valid signature in order to move funds, and a single key is never present on a single place.<br>
+
+**Try out our demo:**<br>
+Launch the server:
+```bash
+$ cd server
+$ cargo build
+$ target/debug/server_exec
+```
+Client (just like [My First Transaction](https://developers.libra.org/docs/my-first-transaction)):
+```bash
+$ scripts/cli/start_cli_testnet.sh
+```
+... and follow the CLI help for creating accounts and transferring Libra. 
+
+|![demo](https://raw.githubusercontent.com/KZen-networks/libra/master/libra-tss-demo.gif "Libra Two-Party Wallet Demo")|
+|:--:|
+
+------
+
 Libra Core implements a decentralized, programmable database which provides a financial infrastructure that can empower billions of people.
 
 ## Note to Developers
