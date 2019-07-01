@@ -115,7 +115,11 @@ impl ExtendedPrivKey {
     #[allow(non_snake_case)]
     pub fn sign(&self, msg: HashValue) -> ed25519_dalek::Signature {
         let message = BigInt::from(msg.to_vec().as_slice());
-        let signature = two_party_eddsa_client::api::sign(&self.client_shim, message, &self.key_pair, &self.aggregated_public_key, &self.id)
+        let signature =
+            two_party_eddsa_client::api::sign(
+                &self.client_shim, message,
+                &self.key_pair,
+                &self.aggregated_public_key, &self.id)
             .expect("Error while signing");
         let R = format!("{:0>64}", signature.R.bytes_compressed_to_big_int().to_hex());
         let s_src = hex::decode(format!("{:0>64}",signature.s.to_big_int().to_hex())).unwrap();
@@ -125,6 +129,7 @@ impl ExtendedPrivKey {
             s_dst[i] = s_src[31 - i];
         }
         let s = format!("{}", hex::encode(s_dst));
+        // gather R and s
         let v = Vec::from_hex(format!("{}{}", R, s)).unwrap();
 
         ed25519_dalek::Signature::from_bytes(v.as_slice()).unwrap()
@@ -155,7 +160,8 @@ impl KeyFactory {
                 Ok(extended_priv_key.clone())
             },
             None => {
-                let (key_pair, aggregated_public_key, id) = two_party_eddsa_client::api::generate_key(&self.client_shim).unwrap();
+                let (key_pair, aggregated_public_key, id) =
+                    two_party_eddsa_client::api::generate_key(&self.client_shim).unwrap();
                 let extended_priv_key = ExtendedPrivKey {
                     client_shim: self.client_shim.clone(),
                     key_pair,

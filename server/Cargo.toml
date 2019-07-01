@@ -11,4 +11,4 @@ name = "server_exec"
 path = "src/main.rs"
 
 [dependencies]
-two-party-eddsa-server = { path = "../../two-party-eddsa-wrapper/server" }
+two-party-eddsa-server = { git = "https://github.com/KZen-networks/two-party-eddsa-wrapper", tag = "v0.1.2" }

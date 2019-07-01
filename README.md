@@ -17,8 +17,8 @@ Both shares are required to produce a valid signature in order to move funds, an
 Launch the server:
 ```bash
 $ cd server
-$ cargo build
-$ target/debug/server_exec
+$ cargo build --release
+$ ../target/release/server_exec
 ```
 Client (just like [My First Transaction](https://developers.libra.org/docs/my-first-transaction)):
 ```bash
