@@ -16,6 +16,7 @@ use std::{
 pub const DELIMITER: &str = ";";
 
 /// Recover wallet from the path specified.
+// TODO: fix recover
 pub fn recover<P: AsRef<Path>>(path: &P) -> Result<WalletLibrary> {
     let input = File::open(path)?;
     let mut buffered = BufReader::new(input);
@@ -25,8 +26,8 @@ pub fn recover<P: AsRef<Path>>(path: &P) -> Result<WalletLibrary> {
     let parts: Vec<&str> = line.split(DELIMITER).collect();
     ensure!(parts.len() == 2, format!("Invalid entry '{}'", line));
 
-    let mnemonic = Mnemonic::from(&parts[0].to_string()[..])?;
-    let mut wallet = WalletLibrary::new_from_mnemonic(mnemonic);
+//    let mnemonic = Mnemonic::from(&parts[0].to_string()[..])?;
+    let mut wallet = WalletLibrary::new();
     wallet.generate_addresses(parts[1].trim().to_string().parse::<u64>()?)?;
 
     Ok(wallet)
@@ -38,7 +39,7 @@ pub fn write_recovery<P: AsRef<Path>>(wallet: &WalletLibrary, path: &P) -> Resul
     writeln!(
         output,
         "{}{}{}",
-        wallet.mnemonic().to_string(),
+        "THERE IS NO SEED",
         DELIMITER,
         wallet.key_leaf()
     )?;

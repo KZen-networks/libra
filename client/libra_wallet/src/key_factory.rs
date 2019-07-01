@@ -15,17 +15,16 @@
 //! Note further that the Key Derivation Function (KDF) chosen in the derivation of Child
 //! Private Keys adheres to [HKDF RFC 5869](https://tools.ietf.org/html/rfc5869).
 
-use byteorder::{ByteOrder, LittleEndian};
-use crypto::{hmac::Hmac as CryptoHmac, pbkdf2::pbkdf2, sha3::Sha3};
 use ed25519_dalek;
-use libra_crypto::{hash::HashValue, hkdf::Hkdf};
+use libra_crypto::{hash::HashValue};
 use serde::{Deserialize, Serialize};
-use sha3::Sha3_256;
-use std::{convert::TryFrom, ops::AddAssign};
+use std::{convert::TryFrom, ops::AddAssign, collections::HashMap};
 use tiny_keccak::Keccak;
 use types::account_address::AccountAddress;
+use two_party_eddsa_client::api::*;
+use hex::FromHex;
 
-use crate::{error::Result, mnemonic::Mnemonic};
+use crate::error::Result;
 
 /// Master is a set of raw bytes that are used for child key derivation
 pub struct Master([u8; 32]);
@@ -68,27 +67,29 @@ impl std::convert::AsMut<u64> for ChildNumber {
 }
 
 /// Derived private key.
+// TODO: delete after debugging
+#[derive(Debug, Clone)]
 pub struct ExtendedPrivKey {
-    /// Child number of the key used to derive from Parent.
-    _child_number: ChildNumber,
-    /// Private key.
-    private_key: ed25519_dalek::SecretKey,
+    client_shim: ClientShim,
+    key_pair: KeyPair,
+    aggregated_public_key: KeyAgg,
+    id: String,
 }
 
 impl ExtendedPrivKey {
-    /// Constructor for creating an ExtendedPrivKey from a ed25519 PrivateKey. Note that the
-    /// ChildNumber are not used in this iteration of LibraWallet, but in order to
-    /// enable more general Hierarchical KeyDerivation schemes, we include it for completeness.
-    pub fn new(_child_number: ChildNumber, private_key: ed25519_dalek::SecretKey) -> Self {
+    pub fn new(client_shim: ClientShim, key_pair: KeyPair, aggregated_public_key: KeyAgg, id: String) -> Self {
         Self {
-            _child_number,
-            private_key,
+            client_shim,
+            key_pair,
+            aggregated_public_key,
+            id,
         }
     }
 
-    /// Returns the PublicKey associated to a particular ExtendedPrivKey
     pub fn get_public(&self) -> ed25519_dalek::PublicKey {
-        (&self.private_key).into()
+        let public_key_bytes = hex::decode(self.aggregated_public_key.apk.bytes_compressed_to_big_int().to_hex()).unwrap();
+        ed25519_dalek::PublicKey::from_bytes(&public_key_bytes.as_slice())
+            .expect("Error while creating public key from bytes")
     }
 
     /// Computes the sha3 hash of the PublicKey and attempts to construct a Libra AccountAddress
@@ -103,6 +104,7 @@ impl ExtendedPrivKey {
         Ok(addr)
     }
 
+
     /// Libra specific sign function that is capable of signing an arbitrary HashValue
     /// NOTE: In Libra, we do not sign the raw bytes of a transaction, instead we sign the raw
     /// bytes of the sha3 hash of the raw bytes of a transaction. It is important to note that the
@@ -110,131 +112,70 @@ impl ExtendedPrivKey {
     /// In other words: In Libra, the message used for signature and verification is the sha3 hash
     /// of the transaction. This sha3 hash is then hashed again using SHA512 to arrive at the
     /// deterministic nonce for the EdDSA.
+    #[allow(non_snake_case)]
     pub fn sign(&self, msg: HashValue) -> ed25519_dalek::Signature {
-        let public_key: ed25519_dalek::PublicKey = (&self.private_key).into();
-        let expanded_secret_key: ed25519_dalek::ExpandedSecretKey =
-            ed25519_dalek::ExpandedSecretKey::from(&self.private_key);
-        expanded_secret_key.sign(msg.as_ref(), &public_key)
+        let message = BigInt::from(msg.to_vec().as_slice());
+        let signature =
+            two_party_eddsa_client::api::sign(
+                &self.client_shim, message,
+                &self.key_pair,
+                &self.aggregated_public_key, &self.id)
+            .expect("Error while signing");
+        let R = format!("{:0>64}", signature.R.bytes_compressed_to_big_int().to_hex());
+        let s_src = hex::decode(format!("{:0>64}",signature.s.to_big_int().to_hex())).unwrap();
+        // to little endian
+        let mut s_dst: [u8; 32] = [0; 32];
+        for i in 0..32 {
+            s_dst[i] = s_src[31 - i];
+        }
+        let s = format!("{}", hex::encode(s_dst));
+        // gather R and s
+        let v = Vec::from_hex(format!("{}{}", R, s)).unwrap();
+
+        ed25519_dalek::Signature::from_bytes(v.as_slice()).unwrap()
     }
 }
 
 /// Wrapper struct from which we derive child keys
 pub struct KeyFactory {
-    master: Master,
+    client_shim: ClientShim,
+    children: HashMap<u64, ExtendedPrivKey>,
 }
 
 impl KeyFactory {
-    const MNEMONIC_SALT_PREFIX: &'static [u8] = b"LIBRA WALLET: mnemonic salt prefix$";
-    const MASTER_KEY_SALT: &'static [u8] = b"LIBRA WALLET: master key salt$";
-    const INFO_PREFIX: &'static [u8] = b"LIBRA WALLET: derived key$";
-    /// Instantiate a new KeyFactor from a Seed, where the [u8; 64] raw bytes of the Seed are used
-    /// to derive both the Master
-    pub fn new(seed: &Seed) -> Result<Self> {
-        let hkdf_extract = Hkdf::<Sha3_256>::extract(Some(KeyFactory::MASTER_KEY_SALT), &seed.0)?;
+
+    pub fn new() -> Result<Self> {
+        let client_shim = ClientShim::new("http://localhost:8000".to_string());
+        let children = HashMap::new();
 
         Ok(Self {
-            master: Master::from(&hkdf_extract[..32]),
+            client_shim,
+            children
         })
     }
 
-    /// Getter for the Master
-    pub fn master(&self) -> &[u8] {
-        &self.master.0[..]
-    }
-
-    /// Derive a particular PrivateKey at a certain ChildNumber
-    ///
-    /// Note that the function below  adheres to [HKDF RFC 5869](https://tools.ietf.org/html/rfc5869).
-    pub fn private_child(&self, child: ChildNumber) -> Result<ExtendedPrivKey> {
-        // application info in the HKDF context is defined as Libra derived key$child_number.
-        let mut le_n = [0u8; 8];
-        LittleEndian::write_u64(&mut le_n, child.0);
-        let mut info = KeyFactory::INFO_PREFIX.to_vec();
-        info.extend_from_slice(&le_n);
-
-        let hkdf_expand = Hkdf::<Sha3_256>::expand(&self.master(), Some(&info), 32)?;
-        let sk = ed25519_dalek::SecretKey::from_bytes(&hkdf_expand)?;
-
-        Ok(ExtendedPrivKey::new(child, sk))
-    }
-}
-
-/// Seed is the output of a one-way function, which accepts a Mnemonic as input
-pub struct Seed([u8; 32]);
-
-impl Seed {
-    /// Get the underlying Seed internal data
-    pub fn data(&self) -> Vec<u8> {
-        self.0.to_vec()
-    }
-}
-
-impl Seed {
-    /// This constructor implements the one-way function that allows to generate a Seed from a
-    /// particular Mnemonic and salt. WalletLibrary implements a fixed salt, but a user could
-    /// choose a user-defined salt instead of the hardcoded one.
-    pub fn new(mnemonic: &Mnemonic, salt: &str) -> Seed {
-        let mut mac = CryptoHmac::new(Sha3::sha3_256(), mnemonic.to_string().as_bytes());
-        let mut output = [0u8; 32];
-
-        let mut msalt = KeyFactory::MNEMONIC_SALT_PREFIX.to_vec();
-        msalt.extend_from_slice(salt.as_bytes());
-
-        pbkdf2(&mut mac, &msalt, 2048, &mut output);
-        Seed(output)
+    pub fn private_child(&mut self, child_number: ChildNumber) -> Result<ExtendedPrivKey> {
+        match self.children.get(child_number.as_ref()) {
+            Some(extended_priv_key) => {
+                Ok(extended_priv_key.clone())
+            },
+            None => {
+                let (key_pair, aggregated_public_key, id) =
+                    two_party_eddsa_client::api::generate_key(&self.client_shim).unwrap();
+                let extended_priv_key = ExtendedPrivKey {
+                    client_shim: self.client_shim.clone(),
+                    key_pair,
+                    aggregated_public_key,
+                    id
+                };
+                self.children.insert(child_number.as_ref().clone(), extended_priv_key.clone());
+                Ok(extended_priv_key.clone())
+            }
+        }
     }
 }
 
 #[test]
 fn assert_default_child_number() {
     assert_eq!(ChildNumber::default(), ChildNumber(0));
-}
-
-#[test]
-fn test_key_derivation() {
-    let data = hex::decode("7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f").unwrap();
-    let mnemonic = Mnemonic::from("legal winner thank year wave sausage worth useful legal winner thank year wave sausage worth useful legal will").unwrap();
-    assert_eq!(
-        mnemonic.to_string(),
-        Mnemonic::mnemonic(&data).unwrap().to_string()
-    );
-    let seed = Seed::new(&mnemonic, "LIBRA");
-
-    let key_factory = KeyFactory::new(&seed).unwrap();
-    assert_eq!(
-        "16274c9618ed59177ca948529c1884ba65c57984d562ec2b4e5aa1ee3e3903be",
-        hex::encode(&key_factory.master())
-    );
-
-    // Check child_0 key derivation.
-    let child_private_0 = key_factory.private_child(ChildNumber(0)).unwrap();
-    assert_eq!(
-        "358a375f36d74c30b7f3299b62d712b307725938f8cc931100fbd10a434fc8b9",
-        hex::encode(&child_private_0.private_key.to_bytes()[..])
-    );
-
-    // Check determinism, regenerate child_0.
-    let child_private_0_again = key_factory.private_child(ChildNumber(0)).unwrap();
-    assert_eq!(
-        hex::encode(&child_private_0.private_key.to_bytes()[..]),
-        hex::encode(&child_private_0_again.private_key.to_bytes()[..])
-    );
-
-    // Check child_1 key derivation.
-    let child_private_1 = key_factory.private_child(ChildNumber(1)).unwrap();
-    assert_eq!(
-        "a325fe7d27b1b49f191cc03525951fec41b6ffa2d4b3007bb1d9dd353b7e56a6",
-        hex::encode(&child_private_1.private_key.to_bytes()[..])
-    );
-
-    let mut child_1_again = ChildNumber(0);
-    child_1_again.increment();
-    assert_eq!(ChildNumber(1), child_1_again);
-
-    // Check determinism, regenerate child_1, but by incrementing ChildNumber(0).
-    let child_private_1_from_increment = key_factory.private_child(child_1_again).unwrap();
-    assert_eq!(
-        "a325fe7d27b1b49f191cc03525951fec41b6ffa2d4b3007bb1d9dd353b7e56a6",
-        hex::encode(&child_private_1_from_increment.private_key.to_bytes()[..])
-    );
 }

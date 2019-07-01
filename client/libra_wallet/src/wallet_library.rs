@@ -14,13 +14,11 @@
 use crate::{
     error::*,
     io_utils,
-    key_factory::{ChildNumber, KeyFactory, Seed},
-    mnemonic::Mnemonic,
+    key_factory::{ChildNumber, KeyFactory},
 };
 use libra_crypto::hash::CryptoHash;
 use proto_conv::{FromProto, IntoProto};
 use protobuf::Message;
-use rand::{rngs::EntropyRng, Rng};
 use std::{collections::HashMap, path::Path};
 use types::{
     account_address::AccountAddress,
@@ -30,7 +28,6 @@ use types::{
 
 /// WalletLibrary contains all the information needed to recreate a particular wallet
 pub struct WalletLibrary {
-    mnemonic: Mnemonic,
     key_factory: KeyFactory,
     addr_map: HashMap<AccountAddress, ChildNumber>,
     key_leaf: ChildNumber,
@@ -41,27 +38,11 @@ impl WalletLibrary {
     /// empty WalletLibrary from that Mnemonic
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        let mut rng = EntropyRng::new();
-        let data: [u8; 32] = rng.gen();
-        let mnemonic = Mnemonic::mnemonic(&data).unwrap();
-        Self::new_from_mnemonic(mnemonic)
-    }
-
-    /// Constructor that instantiates a new WalletLibrary from Mnemonic
-    pub fn new_from_mnemonic(mnemonic: Mnemonic) -> Self {
-        let seed = Seed::new(&mnemonic, "LIBRA");
-        WalletLibrary {
-            mnemonic,
-            key_factory: KeyFactory::new(&seed).unwrap(),
+        Self {
+            key_factory: KeyFactory::new().unwrap(),
             addr_map: HashMap::new(),
             key_leaf: ChildNumber(0),
         }
-    }
-
-    /// Function that returns the string representation of the WalletLibrary Menmonic
-    /// NOTE: This is not secure, and in general the mnemonic should be stored in encrypted format
-    pub fn mnemonic(&self) -> String {
-        self.mnemonic.to_string()
     }
 
     /// Function that writes the wallet Mnemonic to file
@@ -151,7 +132,7 @@ impl WalletLibrary {
     /// associated to a particular AccountAddress. If the PrivateKey associated to an
     /// AccountAddress is not contained in the addr_map, then this function will return an Error
     pub fn sign_txn(
-        &self,
+        &mut self,
         addr: &AccountAddress,
         txn: RawTransaction,
     ) -> Result<SignedTransaction> {
