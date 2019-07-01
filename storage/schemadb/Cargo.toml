@@ -8,6 +8,8 @@ edition = "2018"
 
 [dependencies]
 failure = { path = "../../common/failure_ext", package = "failure_ext" }
+# Fork note: this breaks the storage crate due to version conflict with dependency
+# we currently deal with it because we are interested exclusively in wallet functionality
 rocksdb = "0.10.1"
 
 [dev-dependencies]
