@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{client_proxy::ClientProxy, commands::*};
-use types::{transaction::RawTransactionBytes};
+use types::{transaction::{RawTransaction, RawTransactionBytes}};
 use proto_conv::IntoProto;
 use protobuf::Message;
 use crypto::hash::CryptoHash;
+use std::fs;
 
 /// Command to transfer coins between two accounts.
 pub struct TransferCommand {}
@@ -84,8 +85,12 @@ impl Command for PrepareTransferCommand {
             Ok(unsigned_txn) => {
                 println!("unsigned_txn = {:?}", unsigned_txn);
                 let raw_bytes = unsigned_txn.into_proto().write_to_bytes().unwrap();
+                println!("raw_bytes = {:?}", raw_bytes);
                 let txn_hashvalue = RawTransactionBytes(&raw_bytes).hash();
+
                 println!("unsigned_txn.hash = {:2x?}", txn_hashvalue);
+                fs::write("/Users/odedleiba/MyWorkspace/libra/raw_txn.txt", raw_bytes)
+                    .expect("Unable to write file");
             },
             Err(e) => report_error("Failed to prepare transaction", e),
         }
