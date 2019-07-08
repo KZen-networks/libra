@@ -5,11 +5,11 @@ title: Coding Guidelines
 
 # Libra Core coding guidelines
 
-This document describes the coding guidelines for the Libra Core Rust codebase.  
+This document describes the coding guidelines for the Libra Core Rust codebase.
 
 ## Code formatting
 
-All code formatting is enforced with [rustfmt](https://github.com/rust-lang/rustfmt) with a project specific configuration.  Below is an example command to adhere to the Libra Core project conventions.
+All code formatting is enforced with [rustfmt](https://github.com/rust-lang/rustfmt) with a project-specific configuration.  Below is an example command to adhere to the Libra Core project conventions.
 
 ```
 libra$ cargo fmt
@@ -17,25 +17,25 @@ libra$ cargo fmt
 
 ## Code analysis
 
-[Clippy](https://github.com/rust-lang/rust-clippy) is used to catch common mistakes and is run as a part of continuous integration.  Before submitting your code for review, you can run clippy with our configuration: 
+[Clippy](https://github.com/rust-lang/rust-clippy) is used to catch common mistakes and is run as a part of continuous integration.  Before submitting your code for review, you can run clippy with our configuration:
 
 ```
 libra$ ./scripts/clippy.sh
 ```
 
 In general, we follow the recommendations from [rust-lang-nursery](https://rust-lang-nursery.github.io/api-guidelines/about.html).  The remainder of this guide provides detailed guidelines on specific topics in order to achieve uniformity of the codebase.
- 
+
 ## Code documentation
- 
+
 Any public fields, functions, and methods should be documented with [Rustdoc](https://doc.rust-lang.org/book/ch14-02-publishing-to-crates-io.html#making-useful-documentation-comments).
- 
+
  Please follow the conventions as detailed below for modules, structs, enums, and functions.  The *single line* is used as a preview when navigating Rustdoc.  As an example, see the 'Structs' and 'Enums' sections in the [collections](https://doc.rust-lang.org/std/collections/index.html) Rustdoc.
- 
+
  ```
  /// [Single line] One line summary description
  ///
- /// [Longer description] Multiple lines, inline code 
- /// examples, invariants, purpose, usage, etc. 
+ /// [Longer description] Multiple lines, inline code
+ /// examples, invariants, purpose, usage, etc.
  [Attributes] If attributes exist, add after Rustdoc
  ```
 
@@ -67,7 +67,7 @@ Document the following for each function:
 * State conditions under which the function will `panic!()` or returns an `Error`
 * Brief description of return values.
 * Any special behavior that is not obvious
- 
+
 ### README.md for top-level directories and other major components
 
 Each major component of Libra Core needs to have a `README.md` file. Major components are:
@@ -75,11 +75,11 @@ Each major component of Libra Core needs to have a `README.md` file. Major compo
 * the most important crates in the system (e.g. `vm_runtime`)
 
 This file should contain:
- 
+
  * The *conceptual* *documentation* of the component.
- * A link to external API documentation for the component.
+ * A link to the external API documentation for the component.
  * A link to the master license of the project.
- * A link to the master contributing guide for the project. 
+ * A link to the master contributing guide for the project.
 
 A template for readmes:
 
@@ -90,16 +90,17 @@ A template for readmes:
 
 ## Overview
 
-* Describe its purpose and how the code in this directory works.
-* Describe the interaction of code in this directory with other
-  components.
-* Describe the security model and assumptions about the crates in 
-  this directory.  Examples of how to describe the security 
-  assumptions will be added in the future.
+* Describe the purpose of this component and how the code in  
+this directory works.
+* Describe the interaction of the code in this directory with  
+the other components.
+* Describe the security model and assumptions about the crates  
+in this directory. Examples of how to describe the security  
+assumptions will be added in the future.
 
 ## Implementation Details
 
-* Describe how the component is modeled. For example, why is the 
+* Describe how the component is modeled. For example, why is the
   code organized the way it is?
 * Other relevant implementation details.
 
@@ -107,7 +108,7 @@ A template for readmes:
 
 For the external API of this crate refer to [Link to rustdoc API].
 
-[For a top-level directory, link to the most important APIs within.] 
+[For a top-level directory, link to the most important APIs within.]
 
 ## Contributing
 
@@ -122,7 +123,7 @@ A good example of README.md is `libra/network/README.md` that describes the netw
 
 ## Code suggestions
 
-In the following sections we have suggested some best practices for a uniform codebase. We will investigate and identify the practices that can be enforced using Clippy. This information will evolve and improve over time.
+In the following sections, we have suggested some best practices for a uniform codebase. We will investigate and identify the practices that can be enforced using Clippy. This information will evolve and improve over time.
 
 ### Attributes
 
@@ -131,7 +132,7 @@ Make sure to use the appropriate attributes for handling dead code:
 ```
 // For code that is intended for production usage in the future
 #[allow(dead_code)]
-// For code that is only intended for testing and 
+// For code that is only intended for testing and
 // has no intended production use
 #[cfg(test)]
 ```
@@ -146,7 +147,7 @@ We recommend that you use `//` and `///` comments rather than block comments `/*
 
 ### Cloning
 
-If `x` is reference counted, prefer [`Arc::clone(x)`](https://doc.rust-lang.org/std/sync/struct.Arc.html) over `x.clone()`. [`Arc::clone(x)`](https://doc.rust-lang.org/std/sync/struct.Arc.html) explicitly indicates that we are cloning `x`. This avoids confusion about whether we are performing an expensive clone of a `struct`, `enum`, other type, or just a cheap reference copy.
+If `x` is reference counted, prefer [`Arc::clone(x)`](https://doc.rust-lang.org/std/sync/struct.Arc.html) over `x.clone()`. [`Arc::clone(x)`](https://doc.rust-lang.org/std/sync/struct.Arc.html) explicitly indicates that we are cloning `x`. This avoids confusion about whether we are performing an expensive clone of a `struct`, `enum`, other types, or just a cheap reference copy.
 
 Also, if you are passing around [`Arc<T>`](https://doc.rust-lang.org/std/sync/struct.Arc.html) types, consider using a newtype wrapper:
 
@@ -161,9 +162,9 @@ Concurrent types such as [`CHashMap`](https://docs.rs/crate/chashmap), [`AtomicU
 
 *When to use channels vs concurrent types?*
 
-Listed below are high level suggestions based on experience:
+Listed below are high-level suggestions based on experience:
 
-* Channels are for ownership transfer, decoupling of types, and coarse grained messages.  They fit well for transferring ownership of data, distributing units of work, and communicating async results.  Furthermore, they help break circular dependencies (e.g. `struct Foo` contains an `Arc<Bar>` and `struct Bar` contains an `Arc<Foo>` that leads to complex initialization).
+* Channels are for ownership transfer, decoupling of types, and coarse-grained messages.  They fit well for transferring ownership of data, distributing units of work, and communicating async results.  Furthermore, they help break circular dependencies (e.g. `struct Foo` contains an `Arc<Bar>` and `struct Bar` contains an `Arc<Foo>` that leads to complex initialization).
 
 * Concurrent types (e.g. such as [`CHashMap`](https://docs.rs/crate/chashmap) or structs that have interior mutability building on [`Mutex`](https://doc.rust-lang.org/std/sync/struct.Mutex.html), [`RwLock`](https://doc.rust-lang.org/std/sync/struct.RwLock.html), etc.) are better suited for caches and states.
 
@@ -211,8 +212,8 @@ impl Foo {
         self.size = size;
     }
 
-    /// For a more complex getter, using get_XXX is acceptable 
-    /// (similar to HashMap) with well-defined and 
+    /// For a more complex getter, using get_XXX is acceptable
+    /// (similar to HashMap) with well-defined and
     /// commented semantics
     fn get_value(&self, key: u32) -> Option<&u32> {
         self.key_to_value.get(&key)

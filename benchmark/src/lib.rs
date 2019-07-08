@@ -27,7 +27,7 @@ const MAX_WAIT_COMMIT_ITERATIONS: u64 = 10_000;
 const FREE_LUNCH: u64 = 1_000_000;
 
 /// Benchmarker aims to automate the process of
-///     1) generating and minting coints to a group of accounts
+///     1) generating and minting coins to a group of accounts
 ///     2) generating customized transfer transactions (TXNs) offline,
 ///     3) submiting TXNs to admission control as fast as possible,
 ///     4) waiting for all TXNs committed or timed out,
@@ -101,7 +101,7 @@ impl Benchmarker {
         debug!("#Committed txns before mint = {}", init_committed_txns);
 
         for _i in 0..num_accounts {
-            let address_index = self.client_proxy.create_next_account().unwrap();
+            let address_index = self.client_proxy.create_next_account(false).unwrap();
             self.client_proxy
                 .mint_coins(
                     &[
@@ -137,8 +137,8 @@ impl Benchmarker {
                     .create_submit_transaction_req(
                         program,
                         sender,
-                        Some(GAS_UNIT_PRICE),
                         Some(MAX_GAS_AMOUNT),
+                        Some(GAS_UNIT_PRICE),
                     )
                     .unwrap();
                 sender.sequence_number += 1;
