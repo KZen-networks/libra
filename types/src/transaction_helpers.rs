@@ -51,6 +51,24 @@ pub fn create_signed_txn<T: TransactionSigner + ?Sized>(
     signer.sign_txn(raw_txn)
 }
 
+pub fn create_unsigned_txn(
+    program: Program,
+    sender_address: AccountAddress,
+    sender_sequence_number: u64,
+    max_gas_amount: u64,
+    gas_unit_price: u64,
+    txn_expiration: i64, // for compatibility with UTC's timestamp.
+) -> RawTransaction {
+    RawTransaction::new(
+        sender_address,
+        sender_sequence_number,
+        program,
+        max_gas_amount,
+        gas_unit_price,
+        std::time::Duration::new((Utc::now().timestamp() + txn_expiration) as u64, 0),
+    )
+}
+
 impl TransactionSigner for KeyPair {
     fn sign_txn(&self, raw_txn: RawTransaction) -> failure::prelude::Result<SignedTransaction> {
         let bytes = raw_txn.clone().into_proto().write_to_bytes()?;

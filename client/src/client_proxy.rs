@@ -38,7 +38,7 @@ use types::{
     account_state_blob::{AccountStateBlob, AccountStateWithProof},
     contract_event::{ContractEvent, EventWithProof},
     transaction::{Program, RawTransaction, SignedTransaction, Version},
-    transaction_helpers::{create_signed_txn, TransactionSigner},
+    transaction_helpers::{create_signed_txn, create_unsigned_txn, TransactionSigner},
     validator_verifier::ValidatorVerifier,
 };
 
@@ -365,6 +365,30 @@ impl ClientProxy {
         })
     }
 
+    /// Prepare a transfer transaction: return the unsigned raw transaction
+    pub fn prepare_transfer_coins_int(
+        &mut self,
+        sender_account_ref_id: usize,
+        receiver_address: &AccountAddress,
+        num_coins: u64,
+        gas_unit_price: Option<u64>,
+        max_gas_amount: Option<u64>,
+    ) -> Result<RawTransaction> {
+        let sender = self.accounts.get(sender_account_ref_id).ok_or_else(|| {
+            format_err!("Unable to find sender account: {}", sender_account_ref_id)
+        })?;
+
+        let program = vm_genesis::encode_transfer_program(&receiver_address, num_coins);
+        let unsigned_tx = self.create_unsigned_transaction(
+            program,
+            sender,
+            max_gas_amount, /* max_gas_amount */
+            gas_unit_price, /* gas_unit_price */
+        );
+
+        Ok(unsigned_tx)
+    }
+
     /// Transfers coins from sender to receiver.
     pub fn transfer_coins(
         &mut self,
@@ -417,6 +441,59 @@ impl ClientProxy {
             gas_unit_price,
             max_gas_amount,
             is_blocking,
+        )
+    }
+
+    /// Transfers coins from sender to receiver.
+    pub fn prepare_transfer_coins(
+        &mut self,
+        space_delim_strings: &[&str],
+    ) -> Result<RawTransaction> {
+        ensure!(
+            space_delim_strings.len() >= 4 && space_delim_strings.len() <= 6,
+            "Invalid number of arguments for transfer"
+        );
+
+        let sender_account_address =
+            self.get_account_address_from_parameter(space_delim_strings[1])?;
+        let receiver_address = self.get_account_address_from_parameter(space_delim_strings[2])?;
+
+        let num_coins = Self::convert_to_micro_libras(space_delim_strings[3])?;
+
+        let gas_unit_price = if space_delim_strings.len() > 4 {
+            Some(space_delim_strings[4].parse::<u64>().map_err(|error| {
+                format_parse_data_error(
+                    "gas_unit_price",
+                    InputType::UnsignedInt,
+                    space_delim_strings[4],
+                    error,
+                )
+            })?)
+        } else {
+            None
+        };
+
+        let max_gas_amount = if space_delim_strings.len() > 5 {
+            Some(space_delim_strings[5].parse::<u64>().map_err(|error| {
+                format_parse_data_error(
+                    "max_gas_amount",
+                    InputType::UnsignedInt,
+                    space_delim_strings[5],
+                    error,
+                )
+            })?)
+        } else {
+            None
+        };
+
+        let sender_account_ref_id = self.get_account_ref_id(&sender_account_address)?;
+
+        self.prepare_transfer_coins_int(
+            sender_account_ref_id,
+            &receiver_address,
+            num_coins,
+            gas_unit_price,
+            max_gas_amount,
         )
     }
 
@@ -924,6 +1001,24 @@ impl ClientProxy {
         let mut req = SubmitTransactionRequest::new();
         req.set_signed_txn(signed_txn.into_proto());
         Ok(req)
+    }
+
+    /// Craft an unsigned transaction
+    pub fn create_unsigned_transaction(
+        &self,
+        program: Program,
+        sender_account: &AccountData,
+        max_gas_amount: Option<u64>,
+        gas_unit_price: Option<u64>,
+    ) -> RawTransaction {
+         create_unsigned_txn(
+            program,
+            sender_account.address,
+            sender_account.sequence_number,
+            max_gas_amount.unwrap_or(MAX_GAS_AMOUNT),
+            gas_unit_price.unwrap_or(GAS_UNIT_PRICE),
+            TX_EXPIRATION,
+        )
     }
 
     fn mut_account_from_parameter(&mut self, para: &str) -> Result<&mut AccountData> {
