@@ -10,6 +10,7 @@
 use crypto::signing::KeyPair;
 use serde::{Deserialize, Serialize};
 use types::account_address::AccountAddress;
+pub use types::transaction::{RawTransaction, RawTransactionBytes};
 
 pub(crate) mod account_commands;
 /// Main instance of client holding corresponding information, e.g. account address.
