@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{client_proxy::ClientProxy, commands::*};
-use types::{transaction::{RawTransaction, RawTransactionBytes}};
+use types::transaction::RawTransactionBytes;
 use proto_conv::IntoProto;
 use protobuf::Message;
 use crypto::hash::CryptoHash;
@@ -63,6 +63,7 @@ impl Command for PrepareTransferCommand {
     }
     fn get_params_help(&self) -> &'static str {
         "\n\t<sender_account_address>|<sender_account_ref_id> \
+         <sender_sequence_number> \
          <receiver_account_address>|<receiver_account_ref_id> <number_of_coins> \
          [gas_unit_price_in_micro_libras (default=0)] [max_gas_amount_in_micro_libras (default 10000)]"
     }

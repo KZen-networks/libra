@@ -368,20 +368,18 @@ impl ClientProxy {
     /// Prepare a transfer transaction: return the unsigned raw transaction
     pub fn prepare_transfer_coins_int(
         &mut self,
-        sender_account_ref_id: usize,
+        sender_address: AccountAddress,
+        sender_sequence_number: u64,
         receiver_address: &AccountAddress,
         num_coins: u64,
         gas_unit_price: Option<u64>,
         max_gas_amount: Option<u64>,
     ) -> Result<RawTransaction> {
-        let sender = self.accounts.get(sender_account_ref_id).ok_or_else(|| {
-            format_err!("Unable to find sender account: {}", sender_account_ref_id)
-        })?;
-
         let program = vm_genesis::encode_transfer_program(&receiver_address, num_coins);
         let unsigned_tx = self.create_unsigned_transaction(
             program,
-            sender,
+            sender_address,
+            sender_sequence_number,
             max_gas_amount, /* max_gas_amount */
             gas_unit_price, /* gas_unit_price */
         );
@@ -450,33 +448,21 @@ impl ClientProxy {
         space_delim_strings: &[&str],
     ) -> Result<RawTransaction> {
         ensure!(
-            space_delim_strings.len() >= 4 && space_delim_strings.len() <= 6,
+            space_delim_strings.len() >= 5 && space_delim_strings.len() <= 7,
             "Invalid number of arguments for transfer"
         );
 
-        let sender_account_address =
+        let sender_address =
             self.get_account_address_from_parameter(space_delim_strings[1])?;
-        let receiver_address = self.get_account_address_from_parameter(space_delim_strings[2])?;
+        let sender_sequence_number = space_delim_strings[2].parse::<u64>()?;
+        let receiver_address = self.get_account_address_from_parameter(space_delim_strings[3])?;
 
-        let num_coins = Self::convert_to_micro_libras(space_delim_strings[3])?;
+        let num_coins = Self::convert_to_micro_libras(space_delim_strings[4])?;
 
-        let gas_unit_price = if space_delim_strings.len() > 4 {
-            Some(space_delim_strings[4].parse::<u64>().map_err(|error| {
-                format_parse_data_error(
-                    "gas_unit_price",
-                    InputType::UnsignedInt,
-                    space_delim_strings[4],
-                    error,
-                )
-            })?)
-        } else {
-            None
-        };
-
-        let max_gas_amount = if space_delim_strings.len() > 5 {
+        let gas_unit_price = if space_delim_strings.len() > 5 {
             Some(space_delim_strings[5].parse::<u64>().map_err(|error| {
                 format_parse_data_error(
-                    "max_gas_amount",
+                    "gas_unit_price",
                     InputType::UnsignedInt,
                     space_delim_strings[5],
                     error,
@@ -486,10 +472,22 @@ impl ClientProxy {
             None
         };
 
-        let sender_account_ref_id = self.get_account_ref_id(&sender_account_address)?;
+        let max_gas_amount = if space_delim_strings.len() > 6 {
+            Some(space_delim_strings[6].parse::<u64>().map_err(|error| {
+                format_parse_data_error(
+                    "max_gas_amount",
+                    InputType::UnsignedInt,
+                    space_delim_strings[6],
+                    error,
+                )
+            })?)
+        } else {
+            None
+        };
 
         self.prepare_transfer_coins_int(
-            sender_account_ref_id,
+            sender_address,
+            sender_sequence_number,
             &receiver_address,
             num_coins,
             gas_unit_price,
@@ -1007,14 +1005,15 @@ impl ClientProxy {
     pub fn create_unsigned_transaction(
         &self,
         program: Program,
-        sender_account: &AccountData,
+        sender_address: AccountAddress,
+        sender_sequence_number: u64,
         max_gas_amount: Option<u64>,
         gas_unit_price: Option<u64>,
     ) -> RawTransaction {
          create_unsigned_txn(
             program,
-            sender_account.address,
-            sender_account.sequence_number,
+            sender_address,
+            sender_sequence_number,
             max_gas_amount.unwrap_or(MAX_GAS_AMOUNT),
             gas_unit_price.unwrap_or(GAS_UNIT_PRICE),
             TX_EXPIRATION,
