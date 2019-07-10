@@ -11,6 +11,9 @@ use crypto::signing::KeyPair;
 use serde::{Deserialize, Serialize};
 use types::account_address::AccountAddress;
 pub use types::transaction::{RawTransaction, RawTransactionBytes};
+pub use proto_conv::IntoProto;
+pub use protobuf::Message;
+pub use crypto::hash::CryptoHash;
 
 pub(crate) mod account_commands;
 /// Main instance of client holding corresponding information, e.g. account address.
