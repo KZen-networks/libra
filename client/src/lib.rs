@@ -9,7 +9,7 @@
 //! It supposes all public APIs.
 use crypto::signing::KeyPair;
 use serde::{Deserialize, Serialize};
-use types::account_address::AccountAddress;
+pub use types::account_address::AccountAddress;
 pub use types::transaction::{RawTransaction, RawTransactionBytes, TransactionArgument, Program};
 pub use proto_conv::IntoProto;
 pub use protobuf::Message;
