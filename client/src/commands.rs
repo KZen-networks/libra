@@ -3,7 +3,10 @@
 
 use crate::{
     account_commands::AccountCommand, client_proxy::ClientProxy, query_commands::QueryCommand,
-    submit_transaction_command::SubmitTransactionFromDiskCommand,
+    submit_transaction_command::{
+        SubmitTransactionFromDiskCommand,
+        SubmitSignedTransactionCommand,
+    },
     transfer_commands::{
         TransferCommand,
         PrepareTransferCommand,
@@ -68,6 +71,7 @@ pub fn get_commands() -> (
         Arc::new(TransferCommand {}),
         Arc::new(PrepareTransferCommand {}),
         Arc::new(SubmitTransactionFromDiskCommand {}),
+        Arc::new(SubmitSignedTransactionCommand {}),
     ];
     let mut alias_to_cmd = HashMap::new();
     for command in &commands {

@@ -4,7 +4,7 @@
 use crate::{commands::*, grpc_client::GRPCClient, AccountData, AccountStatus};
 use admission_control_proto::proto::admission_control::SubmitTransactionRequest;
 use config::trusted_peers::TrustedPeersConfig;
-use crypto::signing::KeyPair;
+use crypto::signing::{KeyPair, Signature, PublicKey};
 use failure::prelude::*;
 use futures::{future::Future, stream::Stream};
 use hyper;
@@ -76,6 +76,14 @@ pub enum AccountEntry {
 pub struct IndexAndSequence {
     /// Index/key of the account in TestClient::accounts vector.
     pub account_index: AccountEntry,
+    /// Sequence number of the account.
+    pub sequence_number: u64,
+}
+
+/// Used to return the sequence and sender address submitted for a transfer
+pub struct AddressAndSequence {
+    /// Address of the account.
+    pub account_address: AccountAddress,
     /// Sequence number of the account.
     pub sequence_number: u64,
 }
@@ -520,6 +528,44 @@ impl ClientProxy {
             })?
         };
         self.submit_custom_transaction(signer_account_address, txn, is_blocking)
+    }
+
+    /// Submit a transaction to the network given raw bytes of the transaction, sender public key and signature
+    pub fn submit_signed_transaction(
+        &mut self,
+        space_delim_strings: &[&str],
+    ) -> Result<AddressAndSequence> {
+        let raw_txn_bytes = hex::decode(space_delim_strings[0])?;
+        println!("raw_txn_bytes = {:?}", raw_txn_bytes);
+        let raw_txn = RawTransaction::from_proto_bytes(raw_txn_bytes.as_slice())?;
+        println!("raw_txn = {:?}", raw_txn);
+
+        let pk_bytes = hex::decode(space_delim_strings[1])?;
+        println!("pk_bytes = {:?}", pk_bytes);
+        let public_key = PublicKey::from_slice(pk_bytes.as_slice())?;
+        println!("public_key = {:?}", public_key);
+
+        let signature_bytes = hex::decode(space_delim_strings[2])?;
+        println!("signature_bytes = {:?}", signature_bytes);
+        let signature = Signature::from_compact(signature_bytes.as_slice())?;
+        println!("signature = {:?}", signature);
+
+        let signed_txn = SignedTransaction::craft_signed_transaction_for_client(raw_txn, public_key, signature);
+        println!("signed_txn = {:?}", signed_txn);
+
+        let mut req = SubmitTransactionRequest::new();
+        let sender_address = signed_txn.sender();
+        let sender_sequence = signed_txn.sequence_number();
+
+        req.set_signed_txn(signed_txn.into_proto());
+        self.client.submit_transaction(None, &req)?;
+        // blocking by default (until transaction completion)
+        self.wait_for_transaction(sender_address, sender_sequence);
+
+        Ok(AddressAndSequence {
+            account_address: AccountAddress::from(public_key),
+            sequence_number: sender_sequence
+        })
     }
 
     fn submit_custom_transaction(
