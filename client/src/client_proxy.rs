@@ -44,7 +44,7 @@ use types::{
 
 const CLIENT_WALLET_MNEMONIC_FILE: &str = "client.mnemonic";
 const GAS_UNIT_PRICE: u64 = 0;
-const MAX_GAS_AMOUNT: u64 = 10_000;
+const MAX_GAS_AMOUNT: u64 = 100_000;
 const TX_EXPIRATION: i64 = 100;
 
 /// Enum used for error formatting.
@@ -301,28 +301,20 @@ impl ClientProxy {
             stdout().flush().unwrap();
             max_iterations -= 1;
 
-            match self.client.get_sequence_number(account) {
-                Ok(chain_seq_number) => {
-                    if chain_seq_number >= sequence_number {
-                        println!(
-                            "Transaction completed, found sequence number {}]",
-                            chain_seq_number
-                        );
-                        break;
-                    }
-                    if max_iterations % 100 == 0 {
-                        print!("*");
-                    }
+            if let Ok(Some((_, Some(events)))) =
+                self.client
+                    .get_txn_by_acc_seq(account, sequence_number - 1, true)
+            {
+                println!("transaction is stored!");
+                if events.is_empty() {
+                    println!("but it didn't emit any events (failed execution)");
                 }
-                Err(e) => {
-                    if max_iterations == 0 {
-                        panic!("wait_for_transaction timeout: {}", e);
-                    } else if max_iterations % 100 == 0 {
-                        print!(".");
-                    }
-                }
+                break;
+            } else if max_iterations == 0 {
+                panic!("wait_for_transaction timeout");
+            } else {
+                print!(".");
             }
-
             thread::sleep(time::Duration::from_millis(10));
         }
     }
@@ -581,7 +573,7 @@ impl ClientProxy {
             let signer_account = self.accounts.get(signer_account_ref_id).ok_or_else(|| {
                 format_err!("Unable to find sender account: {}", signer_account_ref_id)
             })?;
-            let signer: Box<&TransactionSigner> = match &signer_account.key_pair {
+            let signer: Box<&dyn TransactionSigner> = match &signer_account.key_pair {
                 Some(key_pair) => Box::new(key_pair),
                 None => Box::new(&self.wallet),
             };
@@ -1021,14 +1013,14 @@ impl ClientProxy {
     }
 
     /// Craft a transaction request.
-    pub fn create_submit_transaction_req(
+    fn create_submit_transaction_req(
         &self,
         program: Program,
         sender_account: &AccountData,
         max_gas_amount: Option<u64>,
         gas_unit_price: Option<u64>,
     ) -> Result<SubmitTransactionRequest> {
-        let signer: Box<&TransactionSigner> = match &sender_account.key_pair {
+        let signer: Box<&dyn TransactionSigner> = match &sender_account.key_pair {
             Some(key_pair) => Box::new(key_pair),
             None => Box::new(&self.wallet),
         };

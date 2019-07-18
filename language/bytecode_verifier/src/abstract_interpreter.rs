@@ -6,10 +6,10 @@
 use crate::{
     absint::{self, AbstractDomain, TransferFunctions},
     abstract_state::{AbstractState, AbstractValue, JoinResult},
-    code_unit_verifier::VerificationPass,
     control_flow_graph::{BlockId, ControlFlowGraph, VMControlFlowGraph},
     nonce::Nonce,
 };
+use mirai_annotations::checked_verify;
 use std::collections::{BTreeMap, BTreeSet};
 use vm::{
     access::ModuleAccess,
@@ -43,12 +43,12 @@ pub struct AbstractInterpreter<'a> {
     errors: Vec<VMStaticViolation>,
 }
 
-impl<'a> VerificationPass<'a> for AbstractInterpreter<'a> {
-    fn new(
+impl<'a> AbstractInterpreter<'a> {
+    pub fn verify(
         module: &'a CompiledModule,
         function_definition: &'a FunctionDefinition,
         cfg: &'a VMControlFlowGraph,
-    ) -> Self {
+    ) -> Vec<VMStaticViolation> {
         let function_definition_view = FunctionDefinitionView::new(module, function_definition);
         let locals_signature_view = function_definition_view.locals_signature();
         let function_signature_view = function_definition_view.signature();
@@ -69,8 +69,9 @@ impl<'a> VerificationPass<'a> for AbstractInterpreter<'a> {
             }
         }
         block_id_to_state.insert(0, AbstractState::new(locals));
-        let next_nonce = function_signature_view.arg_count();
-        Self {
+        // nonces in [0, locals_signature_view.len()) are reserved for constructing canonical state
+        let next_nonce = locals_signature_view.len();
+        let mut verifier = Self {
             module,
             function_definition_view,
             locals_signature_view,
@@ -81,20 +82,20 @@ impl<'a> VerificationPass<'a> for AbstractInterpreter<'a> {
             stack: vec![],
             next_nonce,
             errors: vec![],
-        }
-    }
+        };
 
-    fn verify(mut self) -> Vec<VMStaticViolation> {
         let mut errors = vec![];
-        while !self.work_list.is_empty() {
-            let block_id = self.work_list.pop().unwrap();
-            errors.append(&mut self.propagate(block_id));
+        while !verifier.work_list.is_empty() {
+            let block_id = verifier.work_list.pop().unwrap();
+            if verifier.erroneous_blocks.contains(&block_id) {
+                continue;
+            }
+
+            errors.append(&mut verifier.propagate(block_id));
         }
         errors
     }
-}
 
-impl<'a> AbstractInterpreter<'a> {
     fn propagate(&mut self, block_id: BlockId) -> Vec<VMStaticViolation> {
         match self.compute(block_id) {
             Ok(flow_state) => {
@@ -142,6 +143,8 @@ impl<'a> AbstractInterpreter<'a> {
     }
 
     fn compute(&mut self, block_id: BlockId) -> Result<AbstractState, Vec<VMStaticViolation>> {
+        checked_verify!(self.errors.is_empty());
+
         let mut state = self.block_id_to_state[&block_id].clone();
         let block = &self.cfg.block_of_id(block_id).unwrap();
         let mut offset = block.entry;
@@ -152,7 +155,9 @@ impl<'a> AbstractInterpreter<'a> {
                 offset as usize,
             );
             if !self.errors.is_empty() {
-                return Err(self.errors.clone());
+                let mut es = vec![];
+                es.append(&mut self.errors);
+                return Err(es);
             }
             offset += 1;
         }
@@ -272,17 +277,6 @@ impl<'a> TransferFunctions for AbstractInterpreter<'a> {
                 }
             }
 
-            Bytecode::Assert => {
-                let condition = self.stack.pop().unwrap();
-                let error_code = self.stack.pop().unwrap();
-                if !(condition.signature == SignatureToken::Bool
-                    && error_code.signature == SignatureToken::U64)
-                {
-                    self.errors
-                        .push(VMStaticViolation::AssertTypeMismatchError(offset))
-                }
-            }
-
             Bytecode::StLoc(idx) => {
                 let operand = self.stack.pop().unwrap();
                 if operand.signature != *self.locals_signature_view.token_at(*idx).as_inner() {
@@ -298,6 +292,15 @@ impl<'a> TransferFunctions for AbstractInterpreter<'a> {
                     }
                 }
                 state.insert_local(*idx, operand.value);
+            }
+
+            Bytecode::Abort => {
+                let error_code = self.stack.pop().unwrap();
+                if error_code.signature != SignatureToken::U64 {
+                    self.errors
+                        .push(VMStaticViolation::AbortTypeMismatchError(offset))
+                }
+                *state = AbstractState::new(BTreeMap::new())
             }
 
             Bytecode::Ret => {

@@ -24,7 +24,7 @@ use crate::{
     },
     counters,
     state_replication::{StateComputer, TxnManager},
-    time_service::{
+    util::time_service::{
         duration_since_epoch, wait_if_possible, TimeService, WaitingError, WaitingSuccess,
     },
 };
@@ -624,7 +624,6 @@ impl<T: Payload, P: ProposerInfo> EventProcessor<T, P> {
                     .error(VoteReceptionResult::DuplicateVote)
                     .data(vote)
                     .log();
-                return;
             }
             VoteReceptionResult::NewQuorumCertificate(qc) => {
                 if self.block_store.need_fetch_for_quorum_cert(&qc) == NeedFetchResult::NeedFetch {
@@ -652,9 +651,7 @@ impl<T: Payload, P: ProposerInfo> EventProcessor<T, P> {
                     .await;
             }
             // nothing interesting with votes arriving for the QC that has been formed
-            _ => {
-                return;
-            }
+            _ => {}
         };
     }
 

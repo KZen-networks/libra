@@ -15,6 +15,7 @@ use vm::{
         FunctionSignatureIndex, LocalsSignature, LocalsSignatureIndex, ModuleHandle,
         ModuleHandleIndex, SignatureToken, StringPoolIndex,
     },
+    gas_schedule::{AbstractMemorySize, GasAlgebra, GasPrice, GasUnits},
     transaction_metadata::TransactionMetadata,
 };
 use vm_cache_map::Arena;
@@ -316,21 +317,11 @@ fn test_simple_instruction_transition() {
         1,
     );
 
-    test_simple_instruction(
-        &mut vm,
-        Bytecode::Assert,
-        vec![Local::u64(42), Local::bool(true)],
-        vec![],
-        vec![],
-        vec![],
-        1,
-    );
-
     assert_eq!(
         test_simple_instruction_impl(
             &mut vm,
-            Bytecode::Assert,
-            vec![Local::u64(777), Local::bool(false)],
+            Bytecode::Abort,
+            vec![Local::u64(777)],
             vec![],
             vec![],
             vec![],
@@ -339,7 +330,7 @@ fn test_simple_instruction_transition() {
         .unwrap()
         .unwrap_err()
         .err,
-        VMErrorKind::AssertionFailure(777)
+        VMErrorKind::Aborted(777)
     );
 }
 
@@ -710,9 +701,9 @@ fn test_transaction_info() {
             sender: AccountAddress::default(),
             public_key,
             sequence_number: 10,
-            max_gas_amount: 100_000_009,
-            gas_unit_price: 5,
-            transaction_size: 100,
+            max_gas_amount: GasUnits::new(100_000_009),
+            gas_unit_price: GasPrice::new(5),
+            transaction_size: AbstractMemorySize::new(100),
         }
     };
     let data_cache = FakeDataCache::new();

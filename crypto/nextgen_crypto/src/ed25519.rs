@@ -103,7 +103,7 @@ impl Ed25519Signature {
 
     /// Check for correct size and malleability issues.
     /// This method ensures s is of canonical form and R does not lie on a small group.
-    fn is_valid(bytes: &[u8]) -> std::result::Result<(), CryptoMaterialError> {
+    pub fn check_malleability(bytes: &[u8]) -> std::result::Result<(), CryptoMaterialError> {
         if bytes.len() != ed25519_dalek::SIGNATURE_LENGTH {
             return Err(CryptoMaterialError::WrongLengthError);
         }
@@ -303,6 +303,7 @@ impl ValidKey for Ed25519PublicKey {
 
 impl Signature for Ed25519Signature {
     type VerifyingKeyMaterial = Ed25519PublicKey;
+    type SigningKeyMaterial = Ed25519PrivateKey;
 
     /// Checks that `self` is valid for `message` using `public_key`.
     fn verify(&self, message: &HashValue, public_key: &Ed25519PublicKey) -> Result<()> {
@@ -313,7 +314,7 @@ impl Signature for Ed25519Signature {
     /// Outside of this crate, this particular function should only be used for native signature
     /// verification in move
     fn verify_arbitrary_msg(&self, message: &[u8], public_key: &Ed25519PublicKey) -> Result<()> {
-        Ed25519Signature::is_valid(&self.to_bytes())?;
+        Ed25519Signature::check_malleability(&self.to_bytes())?;
 
         public_key
             .0
@@ -338,7 +339,7 @@ impl TryFrom<&[u8]> for Ed25519Signature {
     type Error = CryptoMaterialError;
 
     fn try_from(bytes: &[u8]) -> std::result::Result<Ed25519Signature, CryptoMaterialError> {
-        Ed25519Signature::is_valid(bytes)?;
+        Ed25519Signature::check_malleability(bytes)?;
         Ed25519Signature::from_bytes_unchecked(bytes)
     }
 }
@@ -351,3 +352,43 @@ impl PartialEq for Ed25519Signature {
 }
 
 impl Eq for Ed25519Signature {}
+
+//////////////////////////
+// Compatibility Traits //
+//////////////////////////
+
+/// Those transitory traits are meant to help with the progressive
+/// migration of the code base to the nextgen_crypto module and will
+/// disappear after
+pub mod compat {
+    use crate::ed25519::*;
+    use crypto::{PublicKey as LegacyPublicKey, Signature as LegacySignature};
+
+    impl From<Ed25519PublicKey> for LegacyPublicKey {
+        fn from(public_key: Ed25519PublicKey) -> Self {
+            LegacyPublicKey::from_slice(&public_key.to_bytes()).unwrap()
+        }
+    }
+
+    impl From<Ed25519Signature> for LegacySignature {
+        fn from(signature: Ed25519Signature) -> Self {
+            LegacySignature::from_compact(&signature.to_bytes()).unwrap()
+        }
+    }
+
+    impl From<LegacyPublicKey> for Ed25519PublicKey {
+        fn from(public_key: LegacyPublicKey) -> Self {
+            let encoded_privkey = public_key.to_slice();
+            let res_key = Ed25519PublicKey::try_from(&encoded_privkey[..]);
+            res_key.unwrap()
+        }
+    }
+
+    impl From<LegacySignature> for Ed25519Signature {
+        fn from(sig: LegacySignature) -> Self {
+            let data = sig.to_compact();
+            Ed25519Signature(ed25519_dalek::Signature::from_bytes(&data).unwrap())
+        }
+    }
+
+}
