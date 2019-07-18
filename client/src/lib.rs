@@ -15,6 +15,7 @@ pub use proto_conv::IntoProto;
 pub use protobuf::Message;
 pub use crypto::hash::CryptoHash;
 pub use crypto::signing::{Signature, PublicKey};
+pub use vm_genesis;
 
 pub(crate) mod account_commands;
 /// Main instance of client holding corresponding information, e.g. account address.
