@@ -89,10 +89,7 @@ impl Command for PrepareTransferCommand {
                 println!("raw_bytes = {:?}", raw_bytes);
                 let txn_hashvalue = RawTransactionBytes(&raw_bytes).hash();
 
-                println!("unsigned_txn.hash = {:2x?}", txn_hashvalue);
-                println!("unsigned_txn.hash HEX encode = {}", hex::encode(txn_hashvalue.to_vec()));
-                fs::write("/Users/odedleiba/MyWorkspace/libra/raw_txn.txt", raw_bytes)
-                    .expect("Unable to write file");
+                println!("unsigned_txn.hash hex = {}", hex::encode(txn_hashvalue.to_vec()));
             },
             Err(e) => report_error("Failed to prepare transaction", e),
         }

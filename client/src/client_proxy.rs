@@ -296,7 +296,6 @@ impl ClientProxy {
     /// Waits for the next transaction for a specific address and prints it
     pub fn wait_for_transaction(&mut self, account: AccountAddress, sequence_number: u64) {
         let mut max_iterations = 5000;
-        println!("sequence_number = {}", sequence_number);
         print!("[waiting ");
         loop {
             stdout().flush().unwrap();
@@ -529,35 +528,24 @@ impl ClientProxy {
         space_delim_strings: &[&str],
     ) -> Result<AddressAndSequence> {
         let raw_txn_bytes = hex::decode(space_delim_strings[0])?;
-        println!("raw_txn_bytes = {:?}", raw_txn_bytes);
         let raw_txn = RawTransaction::from_proto_bytes(raw_txn_bytes.as_slice())?;
-        println!("raw_txn = {:?}", raw_txn);
 
         let pk_bytes = hex::decode(space_delim_strings[1])?;
-        println!("pk_bytes = {:?}", pk_bytes);
         let public_key = PublicKey::from_slice(pk_bytes.as_slice())?;
-        println!("public_key = {:?}", public_key);
 
         let signature_bytes = hex::decode(space_delim_strings[2])?;
-        println!("signature_bytes = {:?}", signature_bytes);
         let signature = Signature::from_compact(signature_bytes.as_slice())?;
-        println!("signature = {:?}", signature);
 
         let signed_txn = SignedTransaction::craft_signed_transaction_for_client(raw_txn, public_key, signature);
-        println!("signed_txn = {:?}", signed_txn);
 
         let mut req = SubmitTransactionRequest::new();
         let sender_address = signed_txn.sender();
         let sender_sequence = signed_txn.sequence_number();
-        println!("#1, sender_sequence = {}", sender_sequence);
 
         req.set_signed_txn(signed_txn.into_proto());
-        println!("#2");
         self.client.submit_transaction(None, &req)?;
         // blocking by default (until transaction completion)
-        println!("#3");
         self.wait_for_transaction(sender_address, sender_sequence + 1);
-        println!("#4");
 
         Ok(AddressAndSequence {
             account_address: AccountAddress::from(public_key),
