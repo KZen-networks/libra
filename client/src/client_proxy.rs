@@ -556,7 +556,7 @@ impl ClientProxy {
         self.client.submit_transaction(None, &req)?;
         // blocking by default (until transaction completion)
         println!("#3");
-        self.wait_for_transaction(sender_address, sender_sequence);
+        self.wait_for_transaction(sender_address, sender_sequence + 1);
         println!("#4");
 
         Ok(AddressAndSequence {
