@@ -214,6 +214,8 @@ impl GRPCClient {
         sequence_number: u64,
         fetch_events: bool,
     ) -> Result<Option<(SignedTransaction, Option<Vec<ContractEvent>>)>> {
+        println!("get_txn_by_acc_seq: account = {}", account);
+        println!("get_txn_by_acc_seq: sequence_number = {}", sequence_number);
         let req_item = RequestItem::GetAccountTransactionBySequenceNumber {
             account,
             sequence_number,

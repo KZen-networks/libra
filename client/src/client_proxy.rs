@@ -296,6 +296,7 @@ impl ClientProxy {
     /// Waits for the next transaction for a specific address and prints it
     pub fn wait_for_transaction(&mut self, account: AccountAddress, sequence_number: u64) {
         let mut max_iterations = 5000;
+        println!("sequence_number = {}", sequence_number);
         print!("[waiting ");
         loop {
             stdout().flush().unwrap();
@@ -548,11 +549,15 @@ impl ClientProxy {
         let mut req = SubmitTransactionRequest::new();
         let sender_address = signed_txn.sender();
         let sender_sequence = signed_txn.sequence_number();
+        println!("#1, sender_sequence = {}", sender_sequence);
 
         req.set_signed_txn(signed_txn.into_proto());
+        println!("#2");
         self.client.submit_transaction(None, &req)?;
         // blocking by default (until transaction completion)
+        println!("#3");
         self.wait_for_transaction(sender_address, sender_sequence);
+        println!("#4");
 
         Ok(AddressAndSequence {
             account_address: AccountAddress::from(public_key),
