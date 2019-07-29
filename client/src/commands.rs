@@ -2,11 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    account_commands::AccountCommand, client_proxy::ClientProxy, query_commands::QueryCommand,
-    submit_transaction_command::{
-        SubmitTransactionFromDiskCommand,
-        SubmitSignedTransactionCommand,
-    },
+    account_commands::AccountCommand, client_proxy::ClientProxy, dev_commands::DevCommand,
+    query_commands::QueryCommand, submit_transaction_commands::SubmitSignedTransactionCommand,
     transfer_commands::{
         TransferCommand,
         PrepareTransferCommand,
@@ -70,8 +67,8 @@ pub fn get_commands() -> (
         Arc::new(QueryCommand {}),
         Arc::new(TransferCommand {}),
         Arc::new(PrepareTransferCommand {}),
-        Arc::new(SubmitTransactionFromDiskCommand {}),
         Arc::new(SubmitSignedTransactionCommand {}),
+        Arc::new(DevCommand {}),
     ];
     let mut alias_to_cmd = HashMap::new();
     for command in &commands {

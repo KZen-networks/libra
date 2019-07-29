@@ -1,7 +1,6 @@
 // Copyright (c) The Libra Core Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-#![feature(duration_float)]
 #![deny(missing_docs)]
 //! Libra Client
 //!
@@ -11,8 +10,7 @@ use crypto::signing::KeyPair;
 use serde::{Deserialize, Serialize};
 pub use types::account_address::AccountAddress;
 pub use types::transaction::{RawTransaction, RawTransactionBytes, TransactionArgument, Program};
-pub use proto_conv::IntoProto;
-pub use protobuf::Message;
+pub use proto_conv::{IntoProtoBytes, FromProtoBytes};
 pub use crypto::hash::CryptoHash;
 pub use crypto::signing::{Signature, PublicKey};
 pub use vm_genesis;
@@ -22,11 +20,12 @@ pub(crate) mod account_commands;
 pub mod client_proxy;
 /// Command struct to interact with client.
 pub mod commands;
+pub(crate) mod dev_commands;
 /// gRPC client wrapper to connect to validator.
 pub(crate) mod grpc_client;
 pub(crate) mod query_commands;
-pub(crate) mod submit_transaction_command;
 pub(crate) mod transfer_commands;
+pub(crate) mod submit_transaction_commands;
 
 /// Struct used to store data for each created account.  We track the sequence number
 /// so we can create new transactions easily
