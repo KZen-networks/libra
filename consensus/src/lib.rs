@@ -8,10 +8,7 @@
 //! [HotStuff](https://arxiv.org/pdf/1803.05069.pdf)).
 
 #![deny(missing_docs)]
-#![feature(async_await, slice_patterns)]
-#![feature(drain_filter)]
-#![feature(checked_duration_since)]
-#![feature(crate_visibility_modifier)]
+#![feature(async_await)]
 #![recursion_limit = "128"]
 #[macro_use]
 extern crate failure;

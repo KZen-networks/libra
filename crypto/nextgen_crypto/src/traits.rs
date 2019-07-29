@@ -92,7 +92,7 @@ impl<T: ValidKey> ValidKeyStringExt for T {}
 
 /// A type family for key material that should remain secret and has an
 /// associated type of the [`PublicKey`][PublicKey] family.
-pub trait PrivateKey: ValidKey {
+pub trait PrivateKey: Sized {
     /// We require public / private types to be coupled, i.e. their
     /// associated type is each other.
     type PublicKeyMaterial: PublicKey<PrivateKeyMaterial = Self>;
@@ -108,7 +108,7 @@ pub trait PrivateKey: ValidKey {
 /// A trait for a [`ValidKey`][ValidKey] which knows how to sign a
 /// message, and return an associated `Signature` type.
 pub trait SigningKey:
-    PrivateKey<PublicKeyMaterial = <Self as SigningKey>::VerifyingKeyMaterial>
+    PrivateKey<PublicKeyMaterial = <Self as SigningKey>::VerifyingKeyMaterial> + ValidKey
 {
     /// The associated verifying key type for this signing key.
     type VerifyingKeyMaterial: VerifyingKey<SigningKeyMaterial = Self>;
@@ -129,7 +129,7 @@ pub trait SigningKey:
 /// reference.
 /// This convertibility requirement ensures the existence of a
 /// deterministic, canonical public key construction from a private key.
-pub trait PublicKey: ValidKey + Clone + Eq + Hash +
+pub trait PublicKey: Sized + Clone + Eq + Hash +
     // This unsightly turbofish type parameter is the precise constraint
     // needed to require that there exists an
     //
@@ -154,7 +154,7 @@ pub trait PublicKey: ValidKey + Clone + Eq + Hash +
 /// It is linked to a type of the Signature family, which carries the
 /// verification implementation.
 pub trait VerifyingKey:
-    PublicKey<PrivateKeyMaterial = <Self as VerifyingKey>::SigningKeyMaterial>
+    PublicKey<PrivateKeyMaterial = <Self as VerifyingKey>::SigningKeyMaterial> + ValidKey
 {
     /// The associated signing key type for this verifying key.
     type SigningKeyMaterial: SigningKey<VerifyingKeyMaterial = Self>;
@@ -168,6 +168,14 @@ pub trait VerifyingKey:
         signature: &Self::SignatureMaterial,
     ) -> Result<()> {
         signature.verify(message, self)
+    }
+
+    /// We provide the implementation which dispatches to the signature.
+    fn batch_verify_signatures(
+        message: &HashValue,
+        keys_and_signatures: Vec<(Self, Self::SignatureMaterial)>,
+    ) -> Result<()> {
+        Self::SignatureMaterial::batch_verify_signatures(message, keys_and_signatures)
     }
 }
 
@@ -203,10 +211,20 @@ pub trait Signature:
 
     /// Convert the signature into a byte representation.
     fn to_bytes(&self) -> Vec<u8>;
-}
 
-/// An alias for the RNG used in the [`Uniform`] trait.
-pub trait SeedableCryptoRng = ::rand::SeedableRng + ::rand::RngCore + ::rand::CryptoRng;
+    /// The implementer can override a batch verification implementation
+    /// that by default iterates over each signature. More efficient
+    /// implementations exist and should be implemented for many schemes.
+    fn batch_verify_signatures(
+        message: &HashValue,
+        keys_and_signatures: Vec<(Self::VerifyingKeyMaterial, Self)>,
+    ) -> Result<()> {
+        for (key, signature) in keys_and_signatures {
+            signature.verify(message, &key)?
+        }
+        Ok(())
+    }
+}
 
 /// A type family for schemes which know how to generate key material from
 /// a cryptographically-secure [`CryptoRng`][::rand::CryptoRng].
@@ -214,7 +232,7 @@ pub trait Uniform {
     /// Generate key material from an RNG for testing purposes.
     fn generate_for_testing<R>(rng: &mut R) -> Self
     where
-        R: SeedableCryptoRng;
+        R: ::rand::SeedableRng + ::rand::RngCore + ::rand::CryptoRng;
 }
 
 /// A type family with a by-convention notion of genesis private key.
