@@ -10,12 +10,14 @@ use futures::{future::Future, stream::Stream};
 use hyper;
 use libra_wallet::{io_utils, wallet_library::WalletLibrary};
 use logger::prelude::*;
+use nextgen_crypto::ed25519::Ed25519PublicKey;
 use num_traits::{
     cast::{FromPrimitive, ToPrimitive},
     identities::Zero,
 };
 use proto_conv::{FromProtoBytes, IntoProto};
 use rust_decimal::Decimal;
+use serde_json;
 use std::{
     collections::HashMap,
     convert::TryFrom,
@@ -23,10 +25,12 @@ use std::{
     fs::{self, File},
     io::{stdout, Read, Write},
     path::Path,
+    process::Command,
     str::FromStr,
     sync::Arc,
     thread, time,
 };
+use tempfile::{NamedTempFile, TempPath};
 use tokio::{self, runtime::Runtime};
 use types::{
     access_path::AccessPath,
@@ -37,8 +41,10 @@ use types::{
     },
     account_state_blob::{AccountStateBlob, AccountStateWithProof},
     contract_event::{ContractEvent, EventWithProof},
-    transaction::{Program, RawTransaction, SignedTransaction, Version},
     transaction_helpers::{create_signed_txn, create_unsigned_txn, TransactionSigner},
+    transaction::{
+        parse_as_transaction_argument, Program, RawTransaction, SignedTransaction, Version,
+    },
     validator_verifier::ValidatorVerifier,
 };
 
@@ -104,6 +110,8 @@ pub struct ClientProxy {
     wallet: WalletLibrary,
     /// Whether to sync with validator on account creation.
     sync_on_wallet_recovery: bool,
+    /// temp files (alive for duration of program)
+    temp_files: Vec<TempPath>,
 }
 
 impl ClientProxy {
@@ -125,7 +133,11 @@ impl ClientProxy {
         );
         // Total 3f + 1 validators, 2f + 1 correct signatures are required.
         // If < 4 validators, all validators have to agree.
-        let validator_verifier = Arc::new(ValidatorVerifier::new(validators));
+        let validator_pubkeys: HashMap<AccountAddress, Ed25519PublicKey> = validators
+            .into_iter()
+            .map(|(key, value)| (key, value.into()))
+            .collect();
+        let validator_verifier = Arc::new(ValidatorVerifier::new(validator_pubkeys));
         let client = GRPCClient::new(host, ac_port, validator_verifier)?;
 
         let accounts = vec![];
@@ -165,6 +177,7 @@ impl ClientProxy {
             faucet_account,
             wallet: Self::get_libra_wallet(mnemonic_file)?,
             sync_on_wallet_recovery,
+            temp_files: vec![],
         })
     }
 
@@ -307,7 +320,7 @@ impl ClientProxy {
             {
                 println!("transaction is stored!");
                 if events.is_empty() {
-                    println!("but it didn't emit any events (failed execution)");
+                    println!("but it didn't emit any events");
                 }
                 break;
             } else if max_iterations == 0 {
@@ -495,6 +508,98 @@ impl ClientProxy {
         )
     }
 
+    /// Compile move program
+    pub fn compile_program(&mut self, space_delim_strings: &[&str]) -> Result<String> {
+        let address = self.get_account_address_from_parameter(space_delim_strings[1])?;
+        let file_path = space_delim_strings[2];
+        let is_module = if space_delim_strings.len() > 3 {
+            parse_bool(space_delim_strings[3])?
+        } else {
+            false
+        };
+        let output_path = {
+            if space_delim_strings.len() == 5 {
+                space_delim_strings[4].to_string()
+            } else {
+                let tmp_path = NamedTempFile::new()?.into_temp_path();
+                let path = tmp_path.to_str().unwrap().to_string();
+                self.temp_files.push(tmp_path);
+                path
+            }
+        };
+        // custom handler of old module format
+        // TODO: eventually retire code after vm separation between modules and scripts
+        let tmp_source = if is_module {
+            let mut tmp_file = NamedTempFile::new()?;
+            let code = format!(
+                "\
+                 modules:\n\
+                 {}\n\
+                 script:\n\
+                 main(){{\n\
+                 return;\n\
+                 }}",
+                fs::read_to_string(file_path)?
+            );
+            writeln!(tmp_file, "{}", code)?;
+            Some(tmp_file)
+        } else {
+            None
+        };
+
+        let source_path = tmp_source
+            .as_ref()
+            .map(|f| f.path().to_str().unwrap())
+            .unwrap_or(file_path);
+        let args = format!(
+            "run -p compiler -- -a {} -o {} {}",
+            address, output_path, source_path
+        );
+        let status = Command::new("cargo")
+            .args(args.split(' '))
+            .spawn()?
+            .wait()?;
+        if !status.success() {
+            return Err(format_err!("compilation failed"));
+        }
+        Ok(output_path)
+    }
+
+    fn submit_program(&mut self, space_delim_strings: &[&str], program: Program) -> Result<()> {
+        let sender_address = self.get_account_address_from_parameter(space_delim_strings[1])?;
+        let sender_ref_id = self.get_account_ref_id(&sender_address)?;
+        let sender = self.accounts.get(sender_ref_id).unwrap();
+        let sequence_number = sender.sequence_number;
+
+        let req = self.create_submit_transaction_req(program, &sender, None, None)?;
+
+        self.client
+            .submit_transaction(self.accounts.get_mut(sender_ref_id), &req)?;
+        self.wait_for_transaction(sender_address, sequence_number + 1);
+
+        Ok(())
+    }
+
+    /// Publish move module
+    pub fn publish_module(&mut self, space_delim_strings: &[&str]) -> Result<()> {
+        let program = serde_json::from_slice(&fs::read(space_delim_strings[2])?)?;
+        self.submit_program(space_delim_strings, program)
+    }
+
+    /// Execute custom script
+    pub fn execute_script(&mut self, space_delim_strings: &[&str]) -> Result<()> {
+        let program: Program = serde_json::from_slice(&fs::read(space_delim_strings[2])?)?;
+        let arguments: Vec<_> = space_delim_strings[3..]
+            .iter()
+            .filter_map(|arg| parse_as_transaction_argument(arg).ok())
+            .collect();
+        let (script, _, modules) = program.into_inner();
+        self.submit_program(
+            space_delim_strings,
+            Program::new(script, modules, arguments),
+        )
+    }
+
     /// Submit a transaction to the network.
     pub fn submit_transaction_from_disk(
         &mut self,
@@ -609,7 +714,7 @@ impl ClientProxy {
         self.get_account_state_and_update(account)
     }
 
-    /// Get committed txn by account and sequnce number.
+    /// Get committed txn by account and sequence number.
     pub fn get_committed_txn_by_acc_seq(
         &mut self,
         space_delim_strings: &[&str],

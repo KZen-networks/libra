@@ -4,7 +4,7 @@
 //! Gas metering logic for the Move VM.
 use crate::{
     code_cache::module_cache::ModuleCache, execution_stack::ExecutionStack,
-    loaded_data::function::FunctionReference,
+    loaded_data::function::FunctionReference, value::Local,
 };
 use types::account_address::ADDRESS_LENGTH;
 use vm::{access::ModuleAccess, errors::*, file_format::Bytecode, gas_schedule::*};
@@ -186,7 +186,7 @@ impl GasMeter {
                 let default_gas = static_cost_instr(instr, AbstractMemorySize::new(1));
                 Self::gas_of(default_gas)
             }
-            Bytecode::Call(call_idx) => {
+            Bytecode::Call(call_idx, _) => {
                 let self_module = &stk.top_frame()?.module();
                 let function_ref = try_runtime!(stk
                     .module_cache
@@ -200,11 +200,11 @@ impl GasMeter {
                     Self::gas_of(call_gas)
                 }
             }
-            Bytecode::Unpack(_) => {
+            Bytecode::Unpack(_, _) => {
                 let size = stk.peek()?.size();
                 Self::gas_of(static_cost_instr(instr, size))
             }
-            Bytecode::Pack(struct_idx) => {
+            Bytecode::Pack(struct_idx, _) => {
                 let struct_def = &stk.top_frame()?.module().struct_def_at(*struct_idx);
                 // Similar logic applies here as in Call, so we probably don't need to take
                 // into account the size of the values on the value stack that we are placing into
@@ -217,12 +217,34 @@ impl GasMeter {
             Bytecode::WriteRef => {
                 // Get a reference to the value that we are going to write
                 let write_val = stk.peek_at(1)?;
-                // Get the size of this value and charge accordingly
+                // Grab the reference that's going to be written to
+                let ref_val = stk.peek()?;
+                // Get the size of this value and charge accordingly.
                 let size = write_val.size();
-                let default_gas = static_cost_instr(instr, size);
+                let mut default_gas = static_cost_instr(instr, size);
+                // Determine if the reference is global. If so charge for any expansion of global
+                // memory along with the write operation that will be incurred.
+                if let Local::GlobalRef(_) = ref_val {
+                    // Charge for any memory expansion
+                    let new_val_size = ref_val.size();
+                    let size_difference = if new_val_size.app(&size, |new_vl_size, size| new_vl_size > size) {
+                        new_val_size.sub(size)
+                    } else {
+                        // The difference is always >= 0
+                        AbstractMemorySize::new(0)
+                    };
+                    default_gas.memory_gas = default_gas.memory_gas
+                        // Charge for the iops on global memory
+                        .add(size.mul(*GLOBAL_MEMORY_PER_BYTE_WRITE_COST))
+                        // Charge for any memory expansion
+                        .add(size_difference.mul(*GLOBAL_MEMORY_PER_BYTE_COST));
+                };
                 Self::gas_of(default_gas)
             }
             | Bytecode::ReadRef => {
+                // NB: We don't charge for reads from global memory: we charge once for the read
+                // from global memory that is performed by a BorrowGlobal operation. After this,
+                // all ReadRefs will be reading from local cache and we don't need to distinguish.
                 let size = stk.peek()?.size();
                 let default_gas = static_cost_instr(instr, size);
                 Self::gas_of(default_gas)
@@ -245,17 +267,17 @@ impl GasMeter {
             //
             // Borrowing a global causes a read of the underlying data. Therefore the cost is
             // dependent on the size of the data being borrowed.
-            Bytecode::BorrowGlobal(_)
+            Bytecode::BorrowGlobal(_, _)
             // In the process of determining if a resource exists, we need to load/read that
             // memory. We therefore need to charge for this query based on the size of the data
             // being accessed.
-            | Bytecode::Exists(_)
+            | Bytecode::Exists(_, _)
             // A MoveFrom does not trigger a write to memory. But it does push the value of that
             // size onto the stack. So we charge based upon the size of the instruction.
-            | Bytecode::MoveFrom(_)
+            | Bytecode::MoveFrom(_, _)
             // A MoveToSender causes a write of the resource to storage. We therefore charge based
             // on the size of the resource being moved.
-            | Bytecode::MoveToSender(_) => {
+            | Bytecode::MoveToSender(_, _) => {
                 let mem_size = if memory_size.get() > 1 {
                     memory_size.sub(AbstractMemorySize::new(1))
                 } else {
