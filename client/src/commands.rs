@@ -3,7 +3,7 @@
 
 use crate::{
     account_commands::AccountCommand, client_proxy::ClientProxy, dev_commands::DevCommand,
-    query_commands::QueryCommand, submit_transaction_command::SubmitSignedTransaction,
+    query_commands::QueryCommand, submit_transaction_commands::SubmitSignedTransactionCommand,
     transfer_commands::{
         TransferCommand,
         PrepareTransferCommand,

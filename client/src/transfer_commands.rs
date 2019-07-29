@@ -3,10 +3,8 @@
 
 use crate::{client_proxy::ClientProxy, commands::*};
 use types::transaction::RawTransactionBytes;
-use proto_conv::IntoProto;
-use protobuf::Message;
+use proto_conv::IntoProtoBytes;
 use crypto::hash::CryptoHash;
-use std::fs;
 
 /// Command to transfer coins between two accounts.
 pub struct TransferCommand {}
@@ -85,7 +83,7 @@ impl Command for PrepareTransferCommand {
         match client.prepare_transfer_coins(&params) {
             Ok(unsigned_txn) => {
                 println!("unsigned_txn = {:?}", unsigned_txn);
-                let raw_bytes = unsigned_txn.into_proto().write_to_bytes().unwrap();
+                let raw_bytes = unsigned_txn.into_proto_bytes().unwrap();
                 println!("raw_bytes = {:?}", raw_bytes);
                 let txn_hashvalue = RawTransactionBytes(&raw_bytes).hash();
 
