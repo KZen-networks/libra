@@ -1,33 +1,14 @@
-<<<<<<< HEAD
-use crate::instance::Instance;
-use failure::{self, prelude::*};
-use rand::prelude::*;
-use std::{
-    fs::File,
-    io::{BufRead, BufReader},
-};
-
-=======
 use crate::{aws::Aws, instance::Instance};
 use failure::{self, prelude::*};
 use rand::prelude::*;
 use rusoto_ec2::{DescribeInstancesRequest, Ec2, Filter};
 
 #[derive(Clone)]
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
 pub struct Cluster {
     instances: Vec<Instance>, // guaranteed non-empty
 }
 
 impl Cluster {
-<<<<<<< HEAD
-    pub fn discover() -> failure::Result<Self> {
-        let f = File::open("instances.txt")?;
-        let f = BufReader::new(f);
-        let mut instances = vec![];
-        for line in f.lines() {
-            instances.push(Instance::new(line?));
-=======
     pub fn discover(aws: &Aws) -> failure::Result<Self> {
         let filters = vec![
             Filter {
@@ -66,7 +47,6 @@ impl Cluster {
                 let short_hash = peer_id[..8].into();
                 instances.push(Instance::new(short_hash, ip));
             }
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
         }
         ensure!(!instances.is_empty(), "instances.txt is empty");
         Ok(Self { instances })
@@ -76,11 +56,8 @@ impl Cluster {
         let mut rnd = rand::thread_rng();
         self.instances.choose(&mut rnd).unwrap().clone()
     }
-<<<<<<< HEAD
-=======
 
     pub fn instances(&self) -> &Vec<Instance> {
         &self.instances
     }
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
 }

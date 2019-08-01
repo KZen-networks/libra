@@ -90,8 +90,6 @@ pub enum SerializedType {
 pub enum SerializedKind {
     RESOURCE                = 0x1,
     COPYABLE                = 0x2,
-<<<<<<< HEAD
-=======
 }
 
 #[rustfmt::skip]
@@ -101,7 +99,6 @@ pub enum SerializedKind {
 pub enum SerializedNativeStructFlag {
     NATIVE                  = 0x1,
     DECLARED                = 0x2,
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
 }
 
 /// List of opcodes constants.

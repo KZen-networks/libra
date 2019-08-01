@@ -6,13 +6,8 @@
 use crate::file_format::{
     AddressPoolIndex, CompiledModule, CompiledModuleMut, FieldDefinition, FieldDefinitionIndex,
     FunctionHandle, FunctionSignatureIndex, Kind, MemberCount, ModuleHandle, ModuleHandleIndex,
-<<<<<<< HEAD
-    SignatureToken, StringPoolIndex, StructDefinition, StructHandle, StructHandleIndex, TableIndex,
-    TypeSignature, TypeSignatureIndex,
-=======
     SignatureToken, StringPoolIndex, StructDefinition, StructFieldInformation, StructHandle,
     StructHandleIndex, TableIndex, TypeSignature, TypeSignatureIndex,
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
 };
 use proptest::{
     collection::{vec, SizeRange},
@@ -439,49 +434,6 @@ impl StructDefinitionGen {
     fn materialize(self, state: &mut StDefnMaterializeState) -> StructDefinition {
         let sh_idx = state.next_struct_handle();
         state.owned_type_indexes.advance_to(&Some(sh_idx));
-<<<<<<< HEAD
-
-        // Each struct defines one or more fields. The collect() is to work around the borrow
-        // checker -- it's annoying.
-        let field_defs: Vec<_> = self
-            .field_defs
-            .into_iter()
-            .map(|field| field.materialize(sh_idx, state))
-            .collect();
-        let kind = match self.kind.materialize() {
-            Kind::Resource => Kind::Resource,
-            Kind::Copyable => {
-                if field_defs
-                    .iter()
-                    .any(|x| state.is_resource(&state.type_signatures[x.signature.0 as usize].0))
-                {
-                    Kind::Resource
-                } else {
-                    Kind::Copyable
-                }
-            }
-        };
-
-        let (field_count, fields) = state.add_field_defs(field_defs);
-
-        let handle = StructHandle {
-            // 0 represents the current module
-            module: ModuleHandleIndex::new(0),
-            name: StringPoolIndex::new(self.name_idx.index(state.string_pool_len) as TableIndex),
-            kind,
-            kind_constraints: self
-                .kind_constraints
-                .into_iter()
-                .map(|kind| kind.materialize())
-                .collect(),
-        };
-        state.add_struct_handle(handle);
-
-        StructDefinition {
-            struct_handle: sh_idx,
-            field_count,
-            fields,
-=======
         let struct_handle = sh_idx;
 
         match self.field_defs {
@@ -556,7 +508,6 @@ impl StructDefinitionGen {
                     field_information,
                 }
             }
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
         }
     }
 }

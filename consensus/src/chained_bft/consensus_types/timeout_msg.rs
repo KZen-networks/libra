@@ -171,10 +171,7 @@ impl CryptoHash for TimeoutMsgSerializer {
 pub struct TimeoutMsg {
     sync_info: SyncInfo,
     pacemaker_timeout: PacemakerTimeout,
-<<<<<<< HEAD:consensus/src/chained_bft/liveness/timeout_msg.rs
     author: Author,
-=======
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847:consensus/src/chained_bft/consensus_types/timeout_msg.rs
     signature: Ed25519Signature,
 }
 
@@ -223,11 +220,7 @@ impl TimeoutMsg {
         &self,
         validator: &ValidatorVerifier<Ed25519PublicKey>,
     ) -> Result<(), VerifyError> {
-<<<<<<< HEAD:consensus/src/chained_bft/liveness/timeout_msg.rs
-        validator.verify_signature(self.author, self.digest(), &self.signature)?;
-=======
         validator.verify_signature(self.author(), self.digest(), &self.signature)?;
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847:consensus/src/chained_bft/consensus_types/timeout_msg.rs
         self.pacemaker_timeout.verify(validator)
     }
 
@@ -243,33 +236,12 @@ impl TimeoutMsg {
     }
 }
 
-<<<<<<< HEAD:consensus/src/chained_bft/liveness/timeout_msg.rs
-impl IntoProto for TimeoutMsg {
-    type ProtoType = network::proto::TimeoutMsg;
-
-    fn into_proto(self) -> Self::ProtoType {
-        let mut proto = Self::ProtoType::new();
-        proto.set_highest_quorum_cert(self.highest_quorum_certificate.into_proto());
-        proto.set_highest_ledger_info(self.highest_ledger_info.into_proto());
-        proto.set_pacemaker_timeout(self.pacemaker_timeout.into_proto());
-        proto.set_author(self.author.into());
-        proto.set_signature(self.signature.to_bytes().as_ref().into());
-        proto
-    }
-}
-
-=======
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847:consensus/src/chained_bft/consensus_types/timeout_msg.rs
 impl FromProto for TimeoutMsg {
     type ProtoType = network::proto::TimeoutMsg;
 
     fn from_proto(mut object: network::proto::TimeoutMsg) -> failure::Result<Self> {
         let sync_info = SyncInfo::from_proto(object.take_sync_info())?;
         let pacemaker_timeout = PacemakerTimeout::from_proto(object.take_pacemaker_timeout())?;
-<<<<<<< HEAD:consensus/src/chained_bft/liveness/timeout_msg.rs
-        let author = Author::try_from(object.take_author())?;
-=======
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847:consensus/src/chained_bft/consensus_types/timeout_msg.rs
         let signature = Ed25519Signature::try_from(object.get_signature())?;
         Ok(TimeoutMsg {
             sync_info,

@@ -174,15 +174,10 @@ pub fn setup_network(
         .into_iter()
         .map(|(peer_id, addrs)| (peer_id.try_into().expect("Invalid PeerId"), addrs))
         .collect();
-<<<<<<< HEAD
-    let network_signing_keypair = config.base.peer_keypairs.get_network_signing_keypair();
-    let (private_key, public_key) = network_signing_keypair;
-=======
     let network_signing_private = config.base.peer_keypairs.take_network_signing_private()
         .expect("Failed to move network signing private key out of NodeConfig, key not set or moved already");
 
     let network_signing_public: Ed25519PublicKey = (&network_signing_private).into();
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
     let network_identity_keypair = config.base.peer_keypairs.get_network_identity_keypair();
     let (
         (mempool_network_sender, mempool_network_events),
@@ -196,11 +191,7 @@ pub fn setup_network(
         })
         .advertised_address(advertised_addr)
         .seed_peers(seed_peers)
-<<<<<<< HEAD
-        .signing_keys((private_key.into(), public_key.into()))
-=======
         .signing_keys((network_signing_private, network_signing_public))
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
         .identity_keys(network_identity_keypair)
         .trusted_peers(trusted_peers)
         .discovery_interval_ms(config.network.discovery_interval_ms)

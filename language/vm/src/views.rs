@@ -17,13 +17,8 @@ use crate::{
     access::ModuleAccess,
     file_format::{
         CodeUnit, FieldDefinition, FunctionDefinition, FunctionHandle, FunctionSignature, Kind,
-<<<<<<< HEAD
-        LocalIndex, LocalsSignature, ModuleHandle, SignatureToken, StructDefinition, StructHandle,
-        StructHandleIndex, TypeSignature,
-=======
         LocalIndex, LocalsSignature, ModuleHandle, SignatureToken, StructDefinition,
         StructFieldInformation, StructHandle, StructHandleIndex, TypeSignature,
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
     },
     SignatureTokenKind,
 };

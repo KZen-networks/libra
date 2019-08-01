@@ -262,15 +262,9 @@ fn serialize_module_handle(binary: &mut BinaryData, module_handle: &ModuleHandle
 /// - `StructHandle.module` as a ULEB128 (index into the `ModuleHandle` table)
 /// - `StructHandle.name` as a ULEB128 (index into the `StringPool`)
 /// - `StructHandle.is_resource` as a 1 byte boolean (0 for false, 1 for true)
-<<<<<<< HEAD
-fn serialize_struct_handle(binary: &mut Vec<u8>, struct_handle: &StructHandle) -> Result<()> {
-    write_u16_as_uleb128(binary, struct_handle.module.0);
-    write_u16_as_uleb128(binary, struct_handle.name.0);
-=======
 fn serialize_struct_handle(binary: &mut BinaryData, struct_handle: &StructHandle) -> Result<()> {
     write_u16_as_uleb128(binary, struct_handle.module.0)?;
     write_u16_as_uleb128(binary, struct_handle.name.0)?;
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
     serialize_kind(binary, struct_handle.kind)?;
     serialize_kinds(binary, &struct_handle.kind_constraints)
 }
@@ -461,16 +455,6 @@ fn serialize_signature_tokens(binary: &mut BinaryData, tokens: &[SignatureToken]
 /// Values for types are defined in `SerializedType`.
 fn serialize_signature_token(binary: &mut BinaryData, token: &SignatureToken) -> Result<()> {
     match token {
-<<<<<<< HEAD
-        SignatureToken::Bool => binary.push(SerializedType::BOOL as u8),
-        SignatureToken::U64 => binary.push(SerializedType::INTEGER as u8),
-        SignatureToken::String => binary.push(SerializedType::STRING as u8),
-        SignatureToken::ByteArray => binary.push(SerializedType::BYTEARRAY as u8),
-        SignatureToken::Address => binary.push(SerializedType::ADDRESS as u8),
-        SignatureToken::Struct(idx, types) => {
-            binary.push(SerializedType::STRUCT as u8);
-            write_u16_as_uleb128(binary, idx.0);
-=======
         SignatureToken::Bool => binary.push(SerializedType::BOOL as u8)?,
         SignatureToken::U64 => binary.push(SerializedType::INTEGER as u8)?,
         SignatureToken::String => binary.push(SerializedType::STRING as u8)?,
@@ -479,7 +463,6 @@ fn serialize_signature_token(binary: &mut BinaryData, token: &SignatureToken) ->
         SignatureToken::Struct(idx, types) => {
             binary.push(SerializedType::STRUCT as u8)?;
             write_u16_as_uleb128(binary, idx.0)?;
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
             serialize_signature_tokens(binary, types)?;
         }
         SignatureToken::Reference(boxed_token) => {
@@ -494,26 +477,6 @@ fn serialize_signature_token(binary: &mut BinaryData, token: &SignatureToken) ->
             binary.push(SerializedType::TYPE_PARAMETER as u8)?;
             write_u16_as_uleb128(binary, *idx)?;
         }
-        SignatureToken::TypeParameter(idx) => {
-            binary.push(SerializedType::TYPE_PARAMETER as u8);
-            write_u16_as_uleb128(binary, *idx);
-        }
-    }
-    Ok(())
-}
-
-fn serialize_kind(binary: &mut Vec<u8>, kind: Kind) -> Result<()> {
-    binary.push(match kind {
-        Kind::Resource => SerializedKind::RESOURCE,
-        Kind::Copyable => SerializedKind::COPYABLE,
-    } as u8);
-    Ok(())
-}
-
-fn serialize_kinds(binary: &mut Vec<u8>, kinds: &[Kind]) -> Result<()> {
-    write_u32_as_uleb128(binary, kinds.len() as u32);
-    for kind in kinds {
-        serialize_kind(binary, *kind)?;
     }
     Ok(())
 }
@@ -556,13 +519,8 @@ pub(crate) fn serialize_instruction(binary: &mut Vec<u8>, opcode: &Bytecode) -> 
 }
 
 /// Serializes a single `Bytecode` instruction.
-<<<<<<< HEAD
-pub(crate) fn serialize_instruction(binary: &mut Vec<u8>, opcode: &Bytecode) -> Result<()> {
-    match opcode {
-=======
 fn serialize_instruction_inner(binary: &mut BinaryData, opcode: &Bytecode) -> Result<()> {
     let res = match opcode {
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
         Bytecode::FreezeRef => binary.push(Opcodes::FREEZE_REF as u8),
         Bytecode::Pop => binary.push(Opcodes::POP as u8),
         Bytecode::Ret => binary.push(Opcodes::RET as u8),
@@ -617,21 +575,6 @@ fn serialize_instruction_inner(binary: &mut BinaryData, opcode: &Bytecode) -> Re
             write_u16_as_uleb128(binary, field_idx.0)
         }
         Bytecode::Call(method_idx, types_idx) => {
-<<<<<<< HEAD
-            binary.push(Opcodes::CALL as u8);
-            write_u16_as_uleb128(binary, method_idx.0);
-            write_u16_as_uleb128(binary, types_idx.0);
-        }
-        Bytecode::Pack(class_idx, types_idx) => {
-            binary.push(Opcodes::PACK as u8);
-            write_u16_as_uleb128(binary, class_idx.0);
-            write_u16_as_uleb128(binary, types_idx.0);
-        }
-        Bytecode::Unpack(class_idx, types_idx) => {
-            binary.push(Opcodes::UNPACK as u8);
-            write_u16_as_uleb128(binary, class_idx.0);
-            write_u16_as_uleb128(binary, types_idx.0);
-=======
             binary.push(Opcodes::CALL as u8)?;
             write_u16_as_uleb128(binary, method_idx.0)?;
             write_u16_as_uleb128(binary, types_idx.0)
@@ -645,7 +588,6 @@ fn serialize_instruction_inner(binary: &mut BinaryData, opcode: &Bytecode) -> Re
             binary.push(Opcodes::UNPACK as u8)?;
             write_u16_as_uleb128(binary, class_idx.0)?;
             write_u16_as_uleb128(binary, types_idx.0)
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
         }
         Bytecode::ReadRef => binary.push(Opcodes::READ_REF as u8),
         Bytecode::WriteRef => binary.push(Opcodes::WRITE_REF as u8),
@@ -672,27 +614,6 @@ fn serialize_instruction_inner(binary: &mut BinaryData, opcode: &Bytecode) -> Re
         Bytecode::GetGasRemaining => binary.push(Opcodes::GET_GAS_REMAINING as u8),
         Bytecode::GetTxnSenderAddress => binary.push(Opcodes::GET_TXN_SENDER as u8),
         Bytecode::Exists(class_idx, types_idx) => {
-<<<<<<< HEAD
-            binary.push(Opcodes::EXISTS as u8);
-            write_u16_as_uleb128(binary, class_idx.0);
-            write_u16_as_uleb128(binary, types_idx.0);
-        }
-        Bytecode::BorrowGlobal(class_idx, types_idx) => {
-            binary.push(Opcodes::BORROW_REF as u8);
-            write_u16_as_uleb128(binary, class_idx.0);
-            write_u16_as_uleb128(binary, types_idx.0);
-        }
-        Bytecode::ReleaseRef => binary.push(Opcodes::RELEASE_REF as u8),
-        Bytecode::MoveFrom(class_idx, types_idx) => {
-            binary.push(Opcodes::MOVE_FROM as u8);
-            write_u16_as_uleb128(binary, class_idx.0);
-            write_u16_as_uleb128(binary, types_idx.0);
-        }
-        Bytecode::MoveToSender(class_idx, types_idx) => {
-            binary.push(Opcodes::MOVE_TO as u8);
-            write_u16_as_uleb128(binary, class_idx.0);
-            write_u16_as_uleb128(binary, types_idx.0);
-=======
             binary.push(Opcodes::EXISTS as u8)?;
             write_u16_as_uleb128(binary, class_idx.0)?;
             write_u16_as_uleb128(binary, types_idx.0)
@@ -712,18 +633,13 @@ fn serialize_instruction_inner(binary: &mut BinaryData, opcode: &Bytecode) -> Re
             binary.push(Opcodes::MOVE_TO as u8)?;
             write_u16_as_uleb128(binary, class_idx.0)?;
             write_u16_as_uleb128(binary, types_idx.0)
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
         }
         Bytecode::CreateAccount => binary.push(Opcodes::CREATE_ACCOUNT as u8),
         Bytecode::EmitEvent => binary.push(Opcodes::EMIT_EVENT as u8),
         Bytecode::GetTxnSequenceNumber => binary.push(Opcodes::GET_TXN_SEQUENCE_NUMBER as u8),
         Bytecode::GetTxnPublicKey => binary.push(Opcodes::GET_TXN_PUBLIC_KEY as u8),
-<<<<<<< HEAD
-    }
-=======
     };
     res?;
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
     Ok(())
 }
 
@@ -739,11 +655,7 @@ fn serialize_code(binary: &mut BinaryData, code: &[Bytecode]) -> Result<()> {
     }
     write_u16(binary, code_size as u16)?;
     for opcode in code {
-<<<<<<< HEAD
-        serialize_instruction(binary, opcode)?;
-=======
         serialize_instruction_inner(binary, opcode)?;
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
     }
     Ok(())
 }

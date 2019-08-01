@@ -1,15 +1,3 @@
-<<<<<<< HEAD
-use cluster_test::{
-    cluster::Cluster,
-    experiments::{Experiment, RebootRandomValidator},
-};
-
-pub fn main() {
-    let cluster = Cluster::discover().expect("Failed to discover cluster");
-    let experiment = RebootRandomValidator::new(&cluster);
-    experiment.run().expect("Failed to run experiment");
-    println!("OK");
-=======
 use clap::{App, Arg, ArgGroup, ArgMatches};
 use cluster_test::{
     aws::Aws,
@@ -219,5 +207,4 @@ fn arg_matches() -> ArgMatches<'static> {
         .group(action_group)
         .args(&[workplace, run, run_once, tail_logs, health_check])
         .get_matches()
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
 }

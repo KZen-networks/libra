@@ -1034,8 +1034,6 @@ impl SerializedKind {
         match value {
             0x1 => Ok(SerializedKind::RESOURCE),
             0x2 => Ok(SerializedKind::COPYABLE),
-<<<<<<< HEAD
-=======
             _ => Err(BinaryError::UnknownSerializedType),
         }
     }
@@ -1046,7 +1044,6 @@ impl SerializedNativeStructFlag {
         match value {
             0x1 => Ok(SerializedNativeStructFlag::NATIVE),
             0x2 => Ok(SerializedNativeStructFlag::DECLARED),
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
             _ => Err(BinaryError::UnknownSerializedType),
         }
     }

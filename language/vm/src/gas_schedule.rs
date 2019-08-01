@@ -9,11 +9,7 @@
 use crate::{
     file_format::{
         AddressPoolIndex, ByteArrayPoolIndex, Bytecode, FieldDefinitionIndex, FunctionHandleIndex,
-<<<<<<< HEAD
-        StringPoolIndex, StructDefinitionIndex, NO_TYPE_ACTUALS,
-=======
         StringPoolIndex, StructDefinitionIndex, NO_TYPE_ACTUALS, NUMBER_OF_BYTECODE_INSTRUCTIONS,
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
     },
     serializer::serialize_instruction,
 };

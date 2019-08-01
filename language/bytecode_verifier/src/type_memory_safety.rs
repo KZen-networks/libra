@@ -4,11 +4,7 @@
 //! This module defines the transfer functions for verifying type and memory safety of a
 //! procedure body.
 use crate::{
-<<<<<<< HEAD:language/bytecode_verifier/src/type_memory_safety.rs
-    absint::{AbstractInterpreter, TransferFunctions},
-=======
     absint::{AbstractInterpreter, BlockPrecondition, TransferFunctions},
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847:language/bytecode_verifier/src/abstract_interpreter.rs
     abstract_state::{AbstractState, AbstractValue},
     control_flow_graph::VMControlFlowGraph,
     nonce::Nonce,
@@ -74,9 +70,6 @@ impl<'a> TypeAndMemorySafetyAnalysis<'a> {
             errors: vec![],
         };
 
-<<<<<<< HEAD:language/bytecode_verifier/src/type_memory_safety.rs
-        verifier.analyze_function(initial_state, &function_definition_view, cfg);
-=======
         let inv_map = verifier.analyze_function(initial_state, &function_definition_view, cfg);
         // Report all the join failures
         for (block_id, inv) in inv_map.iter() {
@@ -87,7 +80,6 @@ impl<'a> TypeAndMemorySafetyAnalysis<'a> {
                 BlockPrecondition::State(_) => (),
             }
         }
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847:language/bytecode_verifier/src/abstract_interpreter.rs
         verifier.errors
     }
 
@@ -445,19 +437,11 @@ impl<'a> TypeAndMemorySafetyAnalysis<'a> {
                 let struct_definition = self.module.struct_def_at(*idx);
                 let struct_definition_view =
                     StructDefinitionView::new(self.module, struct_definition);
-<<<<<<< HEAD:language/bytecode_verifier/src/type_memory_safety.rs
-                for field_definition_view in struct_definition_view.fields().rev() {
-                    let field_signature_view = field_definition_view.type_signature();
-                    let arg = self.stack.pop().unwrap();
-                    if arg.signature != *field_signature_view.token().as_inner() {
-                        return Err(VMStaticViolation::PackTypeMismatchError(offset));
-=======
                 match struct_definition_view.fields() {
                     None => {
                         // TODO pack on native error
                         self.errors
                             .push(VMStaticViolation::PackTypeMismatchError(offset));
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847:language/bytecode_verifier/src/abstract_interpreter.rs
                     }
                     Some(fields) => {
                         for field_definition_view in fields.rev() {

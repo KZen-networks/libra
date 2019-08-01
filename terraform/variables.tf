@@ -49,14 +49,11 @@ variable "validator_type" {
   default     = "m5.large"
 }
 
-<<<<<<< HEAD
-=======
 variable "validator_ebs_size" {
   description = "Size of validator EBS volume in GB"
   default     = 30
 }
 
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
 variable "zone_id" {
   description = "Route53 ZoneId to create records in"
   default     = ""

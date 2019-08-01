@@ -7,24 +7,13 @@ use std::{
 
 #[derive(Clone)]
 pub struct Instance {
-<<<<<<< HEAD
-=======
     short_hash: String,
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
     ip: String,
 }
 
 impl Instance {
-<<<<<<< HEAD
-    pub fn new<I>(ip: I) -> Instance
-    where
-        I: Into<String>,
-    {
-        Instance { ip: ip.into() }
-=======
     pub fn new(short_hash: String, ip: String) -> Instance {
         Instance { short_hash, ip }
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
     }
 
     pub fn run_cmd<I, S>(&self, args: I) -> failure::Result<()>
@@ -54,21 +43,14 @@ impl Instance {
             Ok(exit_status) => exit_status.success(),
         }
     }
-<<<<<<< HEAD
-=======
 
     pub fn short_hash(&self) -> &String {
         &self.short_hash
     }
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
 }
 
 impl fmt::Display for Instance {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-<<<<<<< HEAD
-        write!(f, "{}", self.ip)
-=======
         write!(f, "{}({})", self.short_hash, self.ip)
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
     }
 }

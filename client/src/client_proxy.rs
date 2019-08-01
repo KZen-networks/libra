@@ -15,7 +15,7 @@ use num_traits::{
     cast::{FromPrimitive, ToPrimitive},
     identities::Zero,
 };
-use proto_conv::IntoProto;
+use proto_conv::{FromProtoBytes, IntoProto};
 use rust_decimal::Decimal;
 use serde_json;
 use std::{
@@ -451,6 +451,59 @@ impl ClientProxy {
             gas_unit_price,
             max_gas_amount,
             is_blocking,
+        )
+    }
+
+    /// Transfers coins from sender to receiver.
+    pub fn prepare_transfer_coins(
+        &mut self,
+        space_delim_strings: &[&str],
+    ) -> Result<RawTransaction> {
+        ensure!(
+            space_delim_strings.len() >= 5 && space_delim_strings.len() <= 7,
+            "Invalid number of arguments for transfer"
+        );
+
+        let sender_address =
+            self.get_account_address_from_parameter(space_delim_strings[1])?;
+        let sender_sequence_number = space_delim_strings[2].parse::<u64>()?;
+        let receiver_address = self.get_account_address_from_parameter(space_delim_strings[3])?;
+
+        let num_coins = Self::convert_to_micro_libras(space_delim_strings[4])?;
+
+        let gas_unit_price = if space_delim_strings.len() > 5 {
+            Some(space_delim_strings[5].parse::<u64>().map_err(|error| {
+                format_parse_data_error(
+                    "gas_unit_price",
+                    InputType::UnsignedInt,
+                    space_delim_strings[5],
+                    error,
+                )
+            })?)
+        } else {
+            None
+        };
+
+        let max_gas_amount = if space_delim_strings.len() > 6 {
+            Some(space_delim_strings[6].parse::<u64>().map_err(|error| {
+                format_parse_data_error(
+                    "max_gas_amount",
+                    InputType::UnsignedInt,
+                    space_delim_strings[6],
+                    error,
+                )
+            })?)
+        } else {
+            None
+        };
+
+        self.prepare_transfer_coins_int(
+            sender_address,
+            sender_sequence_number,
+            &receiver_address,
+            num_coins,
+            gas_unit_price,
+            max_gas_amount,
         )
     }
 

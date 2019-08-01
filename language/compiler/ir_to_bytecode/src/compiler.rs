@@ -28,14 +28,9 @@ use vm::{
         FieldDefinitionIndex, FunctionDefinition, FunctionDefinitionIndex, FunctionHandle,
         FunctionHandleIndex, FunctionSignature, FunctionSignatureIndex, Kind, LocalsSignature,
         LocalsSignatureIndex, MemberCount, ModuleHandle, ModuleHandleIndex, SignatureToken,
-<<<<<<< HEAD
-        StringPoolIndex, StructDefinition, StructDefinitionIndex, StructHandle, StructHandleIndex,
-        TableIndex, TypeSignature, TypeSignatureIndex, NO_TYPE_ACTUALS, SELF_MODULE_NAME,
-=======
         StringPoolIndex, StructDefinition, StructDefinitionIndex, StructFieldInformation,
         StructHandle, StructHandleIndex, TableIndex, TypeSignature, TypeSignatureIndex,
         NO_TYPE_ACTUALS, SELF_MODULE_NAME,
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
     },
     printers::TableAccess,
 };

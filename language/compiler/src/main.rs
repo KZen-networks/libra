@@ -78,8 +78,6 @@ fn main() {
         .address
         .map(|a| AccountAddress::try_from(a).unwrap())
         .unwrap_or_else(AccountAddress::default);
-<<<<<<< HEAD
-=======
 
     if args.list_dependencies {
         let source = fs::read_to_string(args.source_path).expect("Unable to read file");
@@ -106,7 +104,6 @@ fn main() {
         }
         return;
     }
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
 
     if !args.module_input {
         let source = fs::read_to_string(args.source_path).expect("Unable to read file");

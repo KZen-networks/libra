@@ -19,11 +19,7 @@ use vm::{
         AddressPoolIndex, ByteArrayPoolIndex, Bytecode, CodeOffset, FieldDefinitionIndex,
         FunctionDefinition, FunctionDefinitionIndex, FunctionHandleIndex, LocalIndex, MemberCount,
         ModuleHandle, SignatureToken, StringPoolIndex, StructDefinition, StructDefinitionIndex,
-<<<<<<< HEAD
-        StructHandleIndex, TableIndex, NO_TYPE_ACTUALS,
-=======
         StructFieldInformation, StructHandleIndex, TableIndex, NO_TYPE_ACTUALS,
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
     },
     gas_schedule::{AbstractMemorySize, GasAlgebra, GasCarrier},
 };
@@ -510,10 +506,6 @@ where
                 let struct_definition = self
                     .root_module
                     .struct_def_at(self.resolve_struct_handle(*struct_handle_idx).2);
-<<<<<<< HEAD
-                let num_fields = struct_definition.field_count as usize;
-                let index = struct_definition.fields;
-=======
                 let (num_fields, index) = match struct_definition.field_information {
                     StructFieldInformation::Native => {
                         panic!("[Struct Generation] Unexpected native struct")
@@ -523,7 +515,6 @@ where
                         fields,
                     } => (field_count, fields),
                 };
->>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
                 let fields = self
                     .root_module
                     .field_def_range(num_fields as MemberCount, index);
