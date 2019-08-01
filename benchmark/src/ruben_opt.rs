@@ -35,7 +35,7 @@ pub struct Opt {
         required_unless = "swarm_config_dir"
     )]
     pub validator_addresses: Vec<String>,
-    /// Debug interface address in the form of ip_address:port.
+    /// TODO: Discard this option. Debug interface address in the form of ip_address:port.
     /// It is requried unless (and hence conflict with) swarm_config_dir is present.
     #[structopt(
         short = "d",
@@ -72,6 +72,10 @@ pub struct Opt {
     /// If not specified or equals 0, it will be set to validator_addresses.len().
     #[structopt(short = "c", long = "num_clients", default_value = "0")]
     pub num_clients: usize,
+    /// Randomly distribute the clients to start sending requests over the stagger_range_ms time.
+    /// A value of 1 ms effectively means starting all clients at once.
+    #[structopt(short = "g", long = "stagger_range_ms", default_value = "64")]
+    pub stagger_range_ms: u16,
     /// Number of repetition to attempt, in one epoch, to increase overal number of sent TXNs.
     #[structopt(short = "r", long = "num_rounds", default_value = "1")]
     pub num_rounds: u64,
@@ -105,11 +109,9 @@ fn parse_socket_address(address: &str, port: u16) -> String {
 }
 
 /// Scan *.node.config.toml files under config_dir_name, parse them as node config
-/// and return libra_swarm's configuration info as a tuple:
-/// (addresses for all nodes, debug_address)
-fn parse_swarm_config_from_dir(config_dir_name: &str) -> Result<(Vec<String>, String)> {
+/// and return libra_swarm's node addresses info as a vector.
+fn parse_swarm_config_from_dir(config_dir_name: &str) -> Result<Vec<String>> {
     let mut validator_addresses: Vec<String> = Vec::new();
-    let mut debug_address = None;
     let re = Regex::new(r"[[:alnum:]]{64}\.node\.config\.toml").expect("failed to build regex");
     let config_dir = PathBuf::from(config_dir_name);
     if config_dir.is_dir() {
@@ -128,10 +130,6 @@ fn parse_swarm_config_from_dir(config_dir_name: &str) -> Result<(Vec<String>, St
                     let config = NodeConfig::parse(&config_string).unwrap_or_else(|_| {
                         panic!("failed to parse NodeConfig from {:?}", filename)
                     });
-                    debug_address.get_or_insert(parse_socket_address(
-                        &config.debug_interface.address,
-                        config.debug_interface.admission_control_node_debug_port,
-                    ));
                     let address = parse_socket_address(
                         &config.admission_control.address,
                         config.admission_control.admission_control_service_port,
@@ -147,11 +145,7 @@ fn parse_swarm_config_from_dir(config_dir_name: &str) -> Result<(Vec<String>, St
             config_dir_name
         )
     }
-    Ok((
-        validator_addresses,
-        debug_address
-            .ok_or_else(|| format_err!("unable to parse debug_address from {}", config_dir_name))?,
-    ))
+    Ok(validator_addresses)
 }
 
 impl Opt {
@@ -167,10 +161,9 @@ impl Opt {
     /// Override validator_addresses and debug_address if swarm_config_dir is provided.
     pub fn try_parse_validator_addresses(&mut self) {
         if let Some(swarm_config_dir) = &self.swarm_config_dir {
-            let (validator_addresses, debug_address) =
+            let validator_addresses =
                 parse_swarm_config_from_dir(swarm_config_dir).expect("invalid arguments");
             self.validator_addresses = validator_addresses;
-            self.debug_address = Some(debug_address);
         }
     }
 }

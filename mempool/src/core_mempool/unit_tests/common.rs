@@ -30,8 +30,8 @@ lazy_static! {
 
 #[derive(Clone)]
 pub struct TestTransaction {
-    address: usize,
-    sequence_number: u64,
+    pub(crate) address: usize,
+    pub(crate) sequence_number: u64,
     gas_price: u64,
 }
 
@@ -108,9 +108,12 @@ pub(crate) fn add_txns_to_mempool(
 }
 
 pub(crate) fn add_txn(pool: &mut CoreMempool, transaction: TestTransaction) -> Result<()> {
-    let txn = transaction.make_signed_transaction();
+    add_signed_txn(pool, transaction.make_signed_transaction())
+}
+
+pub(crate) fn add_signed_txn(pool: &mut CoreMempool, transaction: SignedTransaction) -> Result<()> {
     match pool
-        .add_txn(txn.clone(), 0, 0, 1000, TimelineState::NotReady)
+        .add_txn(transaction, 0, 0, 1000, TimelineState::NotReady)
         .code
     {
         MempoolAddTransactionStatusCode::Valid => Ok(()),
@@ -141,4 +144,11 @@ impl ConsensusMock {
             .collect();
         block
     }
+}
+
+pub(crate) fn exist_in_metrics_cache(mempool: &CoreMempool, txn: &SignedTransaction) -> bool {
+    mempool
+        .metrics_cache
+        .get(&(txn.sender(), txn.sequence_number()))
+        .is_some()
 }

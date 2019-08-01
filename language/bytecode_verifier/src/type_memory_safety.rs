@@ -4,7 +4,7 @@
 //! This module defines the transfer functions for verifying type and memory safety of a
 //! procedure body.
 use crate::{
-    absint::{AbstractInterpreter, TransferFunctions},
+    absint::{AbstractInterpreter, BlockPrecondition, TransferFunctions},
     abstract_state::{AbstractState, AbstractValue},
     control_flow_graph::VMControlFlowGraph,
     nonce::Nonce,
@@ -70,7 +70,16 @@ impl<'a> TypeAndMemorySafetyAnalysis<'a> {
             errors: vec![],
         };
 
-        verifier.analyze_function(initial_state, &function_definition_view, cfg);
+        let inv_map = verifier.analyze_function(initial_state, &function_definition_view, cfg);
+        // Report all the join failures
+        for (block_id, inv) in inv_map.iter() {
+            match inv.pre() {
+                BlockPrecondition::JoinFailure => verifier
+                    .errors
+                    .push(VMStaticViolation::JoinFailure(*block_id as usize)),
+                BlockPrecondition::State(_) => (),
+            }
+        }
         verifier.errors
     }
 
@@ -428,11 +437,21 @@ impl<'a> TypeAndMemorySafetyAnalysis<'a> {
                 let struct_definition = self.module.struct_def_at(*idx);
                 let struct_definition_view =
                     StructDefinitionView::new(self.module, struct_definition);
-                for field_definition_view in struct_definition_view.fields().rev() {
-                    let field_signature_view = field_definition_view.type_signature();
-                    let arg = self.stack.pop().unwrap();
-                    if arg.signature != *field_signature_view.token().as_inner() {
-                        return Err(VMStaticViolation::PackTypeMismatchError(offset));
+                match struct_definition_view.fields() {
+                    None => {
+                        // TODO pack on native error
+                        self.errors
+                            .push(VMStaticViolation::PackTypeMismatchError(offset));
+                    }
+                    Some(fields) => {
+                        for field_definition_view in fields.rev() {
+                            let field_signature_view = field_definition_view.type_signature();
+                            let arg = self.stack.pop().unwrap();
+                            if arg.signature != *field_signature_view.token().as_inner() {
+                                self.errors
+                                    .push(VMStaticViolation::PackTypeMismatchError(offset));
+                            }
+                        }
                     }
                 }
                 self.stack.push(StackAbstractValue {
@@ -453,12 +472,23 @@ impl<'a> TypeAndMemorySafetyAnalysis<'a> {
                 }
                 let struct_definition_view =
                     StructDefinitionView::new(self.module, struct_definition);
-                for field_definition_view in struct_definition_view.fields() {
-                    let field_signature_view = field_definition_view.type_signature();
-                    self.stack.push(StackAbstractValue {
-                        signature: field_signature_view.token().as_inner().clone(),
-                        value: AbstractValue::full_value(field_signature_view.is_resource()),
-                    })
+                match struct_definition_view.fields() {
+                    None => {
+                        // TODO unpack on native error
+                        self.errors
+                            .push(VMStaticViolation::UnpackTypeMismatchError(offset));
+                    }
+                    Some(fields) => {
+                        for field_definition_view in fields {
+                            let field_signature_view = field_definition_view.type_signature();
+                            self.stack.push(StackAbstractValue {
+                                signature: field_signature_view.token().as_inner().clone(),
+                                value: AbstractValue::full_value(
+                                    field_signature_view.is_resource(),
+                                ),
+                            })
+                        }
+                    }
                 }
                 Ok(())
             }
