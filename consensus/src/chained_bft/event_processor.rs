@@ -7,12 +7,16 @@ use crate::{
     chained_bft::{
         block_storage::{BlockReader, BlockStore, NeedFetchResult, VoteReceptionResult},
         common::{Author, Payload, Round},
-        consensus_types::block::Block,
+        consensus_types::{
+            block::Block,
+            proposal_info::{ProposalInfo, ProposerInfo},
+            sync_info::SyncInfo,
+            timeout_msg::{PacemakerTimeout, TimeoutMsg},
+        },
         liveness::{
             pacemaker::{NewRoundEvent, NewRoundReason, Pacemaker},
             proposal_generator::ProposalGenerator,
-            proposer_election::{ProposalInfo, ProposerElection, ProposerInfo},
-            timeout_msg::{PacemakerTimeout, TimeoutMsg},
+            proposer_election::ProposerElection,
         },
         network::{
             BlockRetrievalRequest, BlockRetrievalResponse, ChunkRetrievalRequest,
@@ -20,7 +24,7 @@ use crate::{
         },
         persistent_storage::PersistentStorage,
         safety::{safety_rules::SafetyRules, vote_msg::VoteMsg},
-        sync_manager::{SyncInfo, SyncManager},
+        sync_manager::{SyncManager, SyncMgrContext},
     },
     counters,
     state_replication::{StateComputer, TxnManager},
@@ -39,10 +43,11 @@ use termion::color::*;
 use types::ledger_info::LedgerInfoWithSignatures;
 
 /// Result of initial proposal processing
-/// NeedFetch means separate task mast be spawned for fetching block
-/// Caller should call fetch_and_process_proposal in separate task when NeedFetch is returned
+/// - Done(true) indicates that the proposal was sent to the proposer election
+/// - NeedFetch means separate task mast be spawned for fetching block
+/// - Caller should call fetch_and_process_proposal in separate task when NeedFetch is returned
 pub enum ProcessProposalResult<T, P> {
-    Done,
+    Done(bool),
     NeedFetch(Instant, ProposalInfo<T, P>),
     NeedSync(Instant, ProposalInfo<T, P>),
 }
@@ -161,13 +166,16 @@ impl<T: Payload, P: ProposerInfo> EventProcessor<T, P> {
             NewRoundReason::Timeout { cert } => Some(cert),
             _ => None,
         };
-        let highest_ledger_info = (*self.block_store.highest_ledger_info()).clone();
+        let sync_info = SyncInfo::new(
+            (*proposal.quorum_cert()).clone(),
+            (*self.block_store.highest_ledger_info()).clone(),
+            timeout_certificate,
+        );
         network
             .broadcast_proposal(ProposalInfo {
                 proposal,
                 proposer_info,
-                timeout_certificate,
-                highest_ledger_info,
+                sync_info,
             })
             .await;
         counters::PROPOSALS_COUNT.inc();
@@ -198,7 +206,7 @@ impl<T: Payload, P: ProposerInfo> EventProcessor<T, P> {
                 proposal.proposal.round(),
                 current_round
             );
-            return ProcessProposalResult::Done;
+            return ProcessProposalResult::Done(false);
         }
         if self
             .proposer_election
@@ -210,20 +218,24 @@ impl<T: Payload, P: ProposerInfo> EventProcessor<T, P> {
                 proposal.proposal.author(),
                 proposal.proposal
             );
-            return ProcessProposalResult::Done;
+            return ProcessProposalResult::Done(false);
         }
 
         let deadline = self.pacemaker.current_round_deadline();
-        if let Some(committed_block_id) = proposal.highest_ledger_info.committed_block_id() {
-            if self
-                .block_store
-                .need_sync_for_quorum_cert(committed_block_id, &proposal.highest_ledger_info)
-            {
+        if let Some(committed_block_id) = proposal
+            .sync_info
+            .highest_ledger_info()
+            .committed_block_id()
+        {
+            if self.block_store.need_sync_for_quorum_cert(
+                committed_block_id,
+                proposal.sync_info.highest_ledger_info(),
+            ) {
                 return ProcessProposalResult::NeedSync(deadline, proposal);
             }
         } else {
             warn!("Highest ledger info {} has no committed block", proposal);
-            return ProcessProposalResult::Done;
+            return ProcessProposalResult::Done(false);
         }
 
         match self
@@ -235,7 +247,7 @@ impl<T: Payload, P: ProposerInfo> EventProcessor<T, P> {
             }
             NeedFetchResult::QCRoundBeforeRoot => {
                 warn!("Proposal {} has a highest quorum certificate with round older than root round {}", proposal, self.block_store.root().round());
-                return ProcessProposalResult::Done;
+                return ProcessProposalResult::Done(false);
             }
             NeedFetchResult::QCBlockExist => {
                 if let Err(e) = self
@@ -247,26 +259,28 @@ impl<T: Payload, P: ProposerInfo> EventProcessor<T, P> {
                         "Quorum certificate for proposal {} could not be inserted to the block store: {:?}",
                         proposal, e
                     );
-                    return ProcessProposalResult::Done;
+                    return ProcessProposalResult::Done(false);
                 }
             }
             NeedFetchResult::QCAlreadyExist => (),
         }
 
-        self.finish_proposal_processing(proposal).await;
-        ProcessProposalResult::Done
+        self.finish_proposal_processing(proposal).await
     }
 
     /// Finish proposal processing: note that multiple tasks can execute this function in parallel
     /// so be careful with the updates. The safest thing to do is to pass the proposal further
     /// to the proposal election.
     /// This function is invoked when all the dependencies for the given proposal are ready.
-    async fn finish_proposal_processing(&self, proposal: ProposalInfo<T, P>) {
+    async fn finish_proposal_processing(
+        &self,
+        proposal: ProposalInfo<T, P>,
+    ) -> ProcessProposalResult<T, P> {
         let qc = proposal.proposal.quorum_cert();
         self.pacemaker
             .process_certificates(
                 qc.certified_block_round(),
-                proposal.timeout_certificate.as_ref(),
+                proposal.sync_info.highest_timeout_certificate(),
             )
             .await;
 
@@ -278,10 +292,11 @@ impl<T: Payload, P: ProposerInfo> EventProcessor<T, P> {
                 proposal.proposal.round(),
                 current_round
             );
-            return;
+            return ProcessProposalResult::Done(false);
         }
 
         self.proposer_election.process_proposal(proposal).await;
+        ProcessProposalResult::Done(true)
     }
 
     /// Fetches and completes processing proposal in dedicated task
@@ -320,11 +335,7 @@ impl<T: Payload, P: ProposerInfo> EventProcessor<T, P> {
             .sync_manager
             .sync_to(
                 deadline,
-                SyncInfo {
-                    highest_ledger_info: proposal.highest_ledger_info.clone(),
-                    highest_quorum_cert: proposal.proposal.quorum_cert().clone(),
-                    peer: proposal.proposer_info.get_author(),
-                },
+                SyncMgrContext::new(&proposal.sync_info, proposal.proposer_info.get_author()),
             )
             .await
         {
@@ -353,7 +364,8 @@ impl<T: Payload, P: ProposerInfo> EventProcessor<T, P> {
             .highest_quorum_cert()
             .certified_block_round();
         let new_round_highest_quorum_cert_round = timeout_msg
-            .highest_quorum_certificate()
+            .sync_info()
+            .highest_quorum_cert()
             .certified_block_round();
 
         if current_highest_quorum_cert_round < new_round_highest_quorum_cert_round {
@@ -364,11 +376,10 @@ impl<T: Payload, P: ProposerInfo> EventProcessor<T, P> {
                 .sync_manager
                 .sync_to(
                     deadline,
-                    SyncInfo {
-                        highest_ledger_info: timeout_msg.highest_ledger_info().clone(),
-                        highest_quorum_cert: timeout_msg.highest_quorum_certificate().clone(),
-                        peer: timeout_msg.author(),
-                    },
+                    SyncMgrContext::new(
+                        timeout_msg.sync_info(),
+                        timeout_msg.author(),
+                    ),
                 )
                 .await
                 {
@@ -378,7 +389,7 @@ impl<T: Payload, P: ProposerInfo> EventProcessor<T, P> {
                     ),
                     Err(e) => warn!(
                         "Unable to insert new highest quorum certificate {} from old round {} due to {:?}",
-                        timeout_msg.highest_quorum_certificate(),
+                        timeout_msg.sync_info().highest_quorum_cert(),
                         current_highest_quorum_cert_round,
                         e
                     ),
@@ -387,6 +398,10 @@ impl<T: Payload, P: ProposerInfo> EventProcessor<T, P> {
         self.pacemaker
             .process_remote_timeout(timeout_msg.pacemaker_timeout().clone())
             .await;
+    }
+
+    pub async fn process_sync_info_msg(&mut self, sync_info: SyncInfo) {
+        debug!("Received a sync info msg: {}", sync_info);
     }
 
     /// The replica stops voting for this round and saves its consensus state.  Voting is halted
@@ -423,8 +438,11 @@ impl<T: Payload, P: ProposerInfo> EventProcessor<T, P> {
         );
 
         Some(TimeoutMsg::new(
-            self.block_store.highest_quorum_cert().as_ref().clone(),
-            self.block_store.highest_ledger_info().as_ref().clone(),
+            SyncInfo::new(
+                self.block_store.highest_quorum_cert().as_ref().clone(),
+                self.block_store.highest_ledger_info().as_ref().clone(),
+                None,
+            ),
             PacemakerTimeout::new(round, self.block_store.signer()),
             self.block_store.signer(),
         ))

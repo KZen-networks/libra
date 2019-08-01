@@ -5,16 +5,21 @@ use crate::{
     chained_bft::{
         block_storage::{BlockReader, BlockStore},
         common::Author,
-        consensus_types::{block::Block, quorum_cert::QuorumCert},
+        consensus_types::{
+            block::Block,
+            proposal_info::{ProposalInfo, ProposerInfo},
+            quorum_cert::QuorumCert,
+            sync_info::SyncInfo,
+            timeout_msg::{PacemakerTimeout, PacemakerTimeoutCertificate, TimeoutMsg},
+        },
         event_processor::EventProcessor,
         liveness::{
             local_pacemaker::{ExponentialTimeInterval, LocalPacemaker},
             pacemaker::{NewRoundEvent, NewRoundReason, Pacemaker},
             pacemaker_timeout_manager::HighestTimeoutCertificates,
             proposal_generator::ProposalGenerator,
-            proposer_election::{ProposalInfo, ProposerElection, ProposerInfo},
+            proposer_election::ProposerElection,
             rotating_proposer_election::RotatingProposer,
-            timeout_msg::{PacemakerTimeout, PacemakerTimeoutCertificate, TimeoutMsg},
         },
         network::{
             BlockRetrievalRequest, BlockRetrievalResponse, ChunkRetrievalRequest,
@@ -368,8 +373,7 @@ fn process_successful_proposal_test() {
                 node.block_store.signer(),
             ),
             proposer_info: node.author,
-            timeout_certificate: None,
-            highest_ledger_info: genesis_qc.clone(),
+            sync_info: SyncInfo::new(genesis_qc.clone(), genesis_qc.clone(), None),
         };
         let proposal_id = proposal_info.proposal.id();
         node.event_processor
@@ -428,16 +432,14 @@ fn process_old_proposal_test() {
             .process_winning_proposal(ProposalInfo::<TestPayload, Author> {
                 proposal: new_block,
                 proposer_info: node.author,
-                timeout_certificate: None,
-                highest_ledger_info: genesis_qc.clone(),
+                sync_info: SyncInfo::new(genesis_qc.clone(), genesis_qc.clone(), None),
             })
             .await;
         node.event_processor
             .process_winning_proposal(ProposalInfo::<TestPayload, Author> {
                 proposal: old_block,
                 proposer_info: node.author,
-                timeout_certificate: None,
-                highest_ledger_info: genesis_qc.clone(),
+                sync_info: SyncInfo::new(genesis_qc.clone(), genesis_qc.clone(), None),
             })
             .await;
         let pending_messages = playground
@@ -492,16 +494,14 @@ fn process_round_mismatch_test() {
             .process_proposal(ProposalInfo::<TestPayload, Author> {
                 proposal: block_skip_round,
                 proposer_info: node.author,
-                timeout_certificate: None,
-                highest_ledger_info: genesis_qc.clone(),
+                sync_info: SyncInfo::new(genesis_qc.clone(), genesis_qc.clone(), None),
             })
             .await;
         node.event_processor
             .process_proposal(ProposalInfo::<TestPayload, Author> {
                 proposal: correct_block,
                 proposer_info: node.author,
-                timeout_certificate: None,
-                highest_ledger_info: genesis_qc.clone(),
+                sync_info: SyncInfo::new(genesis_qc.clone(), genesis_qc.clone(), None),
             })
             .await;
 
@@ -575,8 +575,11 @@ fn process_new_round_msg_test() {
         static_proposer
             .event_processor
             .process_timeout_msg(TimeoutMsg::new(
-                block_0_quorum_cert,
-                QuorumCert::certificate_for_genesis(),
+                SyncInfo::new(
+                    block_0_quorum_cert,
+                    QuorumCert::certificate_for_genesis(),
+                    None,
+                ),
                 PacemakerTimeout::new(2, &non_proposer.signer),
                 &non_proposer.signer,
             )),
@@ -624,8 +627,7 @@ fn process_proposer_mismatch_test() {
             .process_proposal(ProposalInfo::<TestPayload, Author> {
                 proposal: block_incorrect_proposer,
                 proposer_info: incorrect_proposer.author,
-                timeout_certificate: None,
-                highest_ledger_info: genesis_qc.clone(),
+                sync_info: SyncInfo::new(genesis_qc.clone(), genesis_qc.clone(), None),
             })
             .await;
 
@@ -633,8 +635,7 @@ fn process_proposer_mismatch_test() {
             .process_proposal(ProposalInfo::<TestPayload, Author> {
                 proposal: correct_block,
                 proposer_info: node.author,
-                timeout_certificate: None,
-                highest_ledger_info: genesis_qc.clone(),
+                sync_info: SyncInfo::new(genesis_qc.clone(), genesis_qc.clone(), None),
             })
             .await;
 
@@ -683,16 +684,14 @@ fn process_timeout_certificate_test() {
             .process_proposal(ProposalInfo::<TestPayload, Author> {
                 proposal: block_skip_round,
                 proposer_info: node.author,
-                timeout_certificate: Some(tc),
-                highest_ledger_info: genesis_qc.clone(),
+                sync_info: SyncInfo::new(genesis_qc.clone(), genesis_qc.clone(), Some(tc)),
             })
             .await;
         node.event_processor
             .process_proposal(ProposalInfo::<TestPayload, Author> {
                 proposal: correct_block,
                 proposer_info: node.author,
-                timeout_certificate: None,
-                highest_ledger_info: genesis_qc.clone(),
+                sync_info: SyncInfo::new(genesis_qc.clone(), genesis_qc.clone(), None),
             })
             .await;
 
@@ -762,8 +761,7 @@ fn process_chunk_retrieval() {
     let proposal_info = ProposalInfo::<TestPayload, Author> {
         proposal: block.clone(),
         proposer_info: node.author,
-        timeout_certificate: None,
-        highest_ledger_info: genesis_qc.clone(),
+        sync_info: SyncInfo::new(genesis_qc.clone(), genesis_qc.clone(), None),
     };
     node.pacemaker
         .process_certificates(proposal_info.proposal.round() - 1, None);
@@ -814,8 +812,7 @@ fn process_block_retrieval() {
     let proposal_info = ProposalInfo::<TestPayload, Author> {
         proposal: block.clone(),
         proposer_info: node.author,
-        timeout_certificate: None,
-        highest_ledger_info: genesis_qc.clone(),
+        sync_info: SyncInfo::new(genesis_qc.clone(), genesis_qc.clone(), None),
     };
     node.pacemaker
         .process_certificates(proposal_info.proposal.round() - 1, None);
@@ -910,8 +907,7 @@ fn basic_restart_test() {
                     node_mut.block_store.signer(),
                 ),
                 proposer_info: node_mut.author,
-                timeout_certificate: None,
-                highest_ledger_info: genesis_qc.clone(),
+                sync_info: SyncInfo::new(genesis_qc.clone(), genesis_qc.clone(), None),
             };
             let proposal_id = proposal_info.proposal.id();
             proposals_mut.push(proposal_id);

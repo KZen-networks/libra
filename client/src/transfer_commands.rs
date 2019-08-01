@@ -69,6 +69,7 @@ impl Command for PrepareTransferCommand {
         "Return an unsigned transaction of a transfer of coins (in libra) from account to another."
     }
     fn execute(&self, client: &mut ClientProxy, params: &[&str]) {
+        println!("PrepareTransferCommand");
         if params.len() < 4 || params.len() > 6 {
             println!("Invalid number of arguments for transfer");
             println!(
