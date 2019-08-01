@@ -15,15 +15,14 @@ use num_traits::{
     cast::{FromPrimitive, ToPrimitive},
     identities::Zero,
 };
-use proto_conv::{FromProtoBytes, IntoProto};
+use proto_conv::IntoProto;
 use rust_decimal::Decimal;
 use serde_json;
 use std::{
     collections::HashMap,
     convert::TryFrom,
-    fmt,
-    fs::{self, File},
-    io::{stdout, Read, Write},
+    fmt, fs,
+    io::{stdout, Write},
     path::Path,
     process::Command,
     str::FromStr,
@@ -41,10 +40,10 @@ use types::{
     },
     account_state_blob::{AccountStateBlob, AccountStateWithProof},
     contract_event::{ContractEvent, EventWithProof},
-    transaction_helpers::{create_signed_txn, create_unsigned_txn, TransactionSigner},
     transaction::{
         parse_as_transaction_argument, Program, RawTransaction, SignedTransaction, Version,
     },
+    transaction_helpers::{create_signed_txn, create_unsigned_txn, TransactionSigner},
     validator_verifier::ValidatorVerifier,
 };
 
@@ -455,59 +454,6 @@ impl ClientProxy {
         )
     }
 
-    /// Transfers coins from sender to receiver.
-    pub fn prepare_transfer_coins(
-        &mut self,
-        space_delim_strings: &[&str],
-    ) -> Result<RawTransaction> {
-        ensure!(
-            space_delim_strings.len() >= 5 && space_delim_strings.len() <= 7,
-            "Invalid number of arguments for transfer"
-        );
-
-        let sender_address =
-            self.get_account_address_from_parameter(space_delim_strings[1])?;
-        let sender_sequence_number = space_delim_strings[2].parse::<u64>()?;
-        let receiver_address = self.get_account_address_from_parameter(space_delim_strings[3])?;
-
-        let num_coins = Self::convert_to_micro_libras(space_delim_strings[4])?;
-
-        let gas_unit_price = if space_delim_strings.len() > 5 {
-            Some(space_delim_strings[5].parse::<u64>().map_err(|error| {
-                format_parse_data_error(
-                    "gas_unit_price",
-                    InputType::UnsignedInt,
-                    space_delim_strings[5],
-                    error,
-                )
-            })?)
-        } else {
-            None
-        };
-
-        let max_gas_amount = if space_delim_strings.len() > 6 {
-            Some(space_delim_strings[6].parse::<u64>().map_err(|error| {
-                format_parse_data_error(
-                    "max_gas_amount",
-                    InputType::UnsignedInt,
-                    space_delim_strings[6],
-                    error,
-                )
-            })?)
-        } else {
-            None
-        };
-
-        self.prepare_transfer_coins_int(
-            sender_address,
-            sender_sequence_number,
-            &receiver_address,
-            num_coins,
-            gas_unit_price,
-            max_gas_amount,
-        )
-    }
-
     /// Compile move program
     pub fn compile_program(&mut self, space_delim_strings: &[&str]) -> Result<String> {
         let address = self.get_account_address_from_parameter(space_delim_strings[1])?;
@@ -565,6 +511,37 @@ impl ClientProxy {
         Ok(output_path)
     }
 
+    /// Submit a transaction to the network given raw bytes of the transaction, sender public key and signature
+    pub fn submit_signed_transaction(
+        &mut self,
+        space_delim_strings: &[&str],
+    ) -> Result<AddressAndSequence> {
+        let raw_txn_bytes = hex::decode(space_delim_strings[0])?;
+        let raw_txn = RawTransaction::from_proto_bytes(raw_txn_bytes.as_slice())?;
+
+        let pk_bytes = hex::decode(space_delim_strings[1])?;
+        let public_key = PublicKey::from_slice(pk_bytes.as_slice())?;
+
+        let signature_bytes = hex::decode(space_delim_strings[2])?;
+        let signature = Signature::from_compact(signature_bytes.as_slice())?;
+
+        let signed_txn = SignedTransaction::craft_signed_transaction_for_client(raw_txn, public_key, signature);
+
+        let mut req = SubmitTransactionRequest::new();
+        let sender_address = signed_txn.sender();
+        let sender_sequence = signed_txn.sequence_number();
+
+        req.set_signed_txn(signed_txn.into_proto());
+        self.client.submit_transaction(None, &req)?;
+        // blocking by default (until transaction completion)
+        self.wait_for_transaction(sender_address, sender_sequence + 1);
+
+        Ok(AddressAndSequence {
+            account_address: AccountAddress::from(public_key),
+            sequence_number: sender_sequence
+        })
+    }
+
     fn submit_program(&mut self, space_delim_strings: &[&str], program: Program) -> Result<()> {
         let sender_address = self.get_account_address_from_parameter(space_delim_strings[1])?;
         let sender_ref_id = self.get_account_ref_id(&sender_address)?;
@@ -598,107 +575,6 @@ impl ClientProxy {
             space_delim_strings,
             Program::new(script, modules, arguments),
         )
-    }
-
-    /// Submit a transaction to the network.
-    pub fn submit_transaction_from_disk(
-        &mut self,
-        space_delim_strings: &[&str],
-        is_blocking: bool,
-    ) -> Result<IndexAndSequence> {
-        let signer_account_address =
-            self.get_account_address_from_parameter(space_delim_strings[1])?;
-
-        let txn = {
-            let mut file = File::open(space_delim_strings[2]).map_err(|_| {
-                format_err!("Cannot open file located at {}", space_delim_strings[2])
-            })?;
-            let mut buf = vec![];
-            file.read_to_end(&mut buf).map_err(|_| {
-                format_err!("Cannot read file located at {}", space_delim_strings[2])
-            })?;
-            RawTransaction::from_proto_bytes(&buf).map_err(|_| {
-                format_err!(
-                    "Cannot deserialize file located at {} as RawTransaction",
-                    space_delim_strings[2]
-                )
-            })?
-        };
-        self.submit_custom_transaction(signer_account_address, txn, is_blocking)
-    }
-
-    /// Submit a transaction to the network given raw bytes of the transaction, sender public key and signature
-    pub fn submit_signed_transaction(
-        &mut self,
-        space_delim_strings: &[&str],
-    ) -> Result<AddressAndSequence> {
-        let raw_txn_bytes = hex::decode(space_delim_strings[0])?;
-        let raw_txn = RawTransaction::from_proto_bytes(raw_txn_bytes.as_slice())?;
-
-        let pk_bytes = hex::decode(space_delim_strings[1])?;
-        let public_key = PublicKey::from_slice(pk_bytes.as_slice())?;
-
-        let signature_bytes = hex::decode(space_delim_strings[2])?;
-        let signature = Signature::from_compact(signature_bytes.as_slice())?;
-
-        let signed_txn = SignedTransaction::craft_signed_transaction_for_client(raw_txn, public_key, signature);
-
-        let mut req = SubmitTransactionRequest::new();
-        let sender_address = signed_txn.sender();
-        let sender_sequence = signed_txn.sequence_number();
-
-        req.set_signed_txn(signed_txn.into_proto());
-        self.client.submit_transaction(None, &req)?;
-        // blocking by default (until transaction completion)
-        self.wait_for_transaction(sender_address, sender_sequence + 1);
-
-        Ok(AddressAndSequence {
-            account_address: AccountAddress::from(public_key),
-            sequence_number: sender_sequence
-        })
-    }
-
-    fn submit_custom_transaction(
-        &mut self,
-        signer_address: AccountAddress,
-        txn: RawTransaction,
-        is_blocking: bool,
-    ) -> Result<IndexAndSequence> {
-        let sender_address;
-        let sender_sequence;
-        {
-            let signer_account_ref_id = self.get_account_ref_id(&signer_address)?;
-            let signer_account = self.accounts.get(signer_account_ref_id).ok_or_else(|| {
-                format_err!("Unable to find sender account: {}", signer_account_ref_id)
-            })?;
-            let signer: Box<&dyn TransactionSigner> = match &signer_account.key_pair {
-                Some(key_pair) => Box::new(key_pair),
-                None => Box::new(&self.wallet),
-            };
-            let mut req = SubmitTransactionRequest::new();
-            let txn = signer.sign_txn(txn).map_err(|_| {
-                format_err!(
-                    "Account #{} failed to sign transaction",
-                    signer_account_ref_id
-                )
-            })?;
-            sender_address = txn.sender();
-            sender_sequence = txn.sequence_number();
-
-            req.set_signed_txn(txn.into_proto());
-            self.client.submit_transaction(None, &req)?;
-        }
-
-        if is_blocking {
-            self.wait_for_transaction(sender_address, sender_sequence);
-        }
-
-        Ok(IndexAndSequence {
-            account_index: AccountEntry::Address(sender_address),
-            // The signer has nothing to do with the sequence here. The sequence number that we are
-            // looking for should just be the sequence number in the sent transaction.
-            sequence_number: sender_sequence,
-        })
     }
 
     /// Get the latest account state from validator.
@@ -1068,7 +944,8 @@ impl ClientProxy {
         )
         .parse::<hyper::Uri>()?;
 
-        let response = runtime.block_on(client.get(url))?;
+        let request = hyper::Request::post(url).body(hyper::Body::empty())?;
+        let response = runtime.block_on(client.request(request))?;
         let status_code = response.status();
         let body = response.into_body().concat2().wait()?;
         let raw_data = std::str::from_utf8(&body)?;
