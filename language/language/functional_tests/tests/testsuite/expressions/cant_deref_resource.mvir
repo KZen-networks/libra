@@ -1,0 +1,53 @@
+// check: VerificationError
+// check: ReadRefResourceError(11)
+
+module Token {
+    resource T {v: u64}
+
+    public new(v: u64): R#Self.T {
+        return T{v: move(v)};
+    }
+
+    public value(this: &R#Self.T): u64 {
+        let vref: &u64;
+        let res: u64;
+        vref = &move(this).v;
+        res = *move(vref);
+        return move(res);
+    }
+
+    public exists(addr: address): bool {
+        let yes: bool;
+        yes = exists<T>(move(addr));
+        return move(yes);
+    }
+
+    public publish(t: R#Self.T) {
+        move_to_sender<T>(move(t));
+        return;
+    }
+
+    public test() {
+        let addr: address;
+        let t: R#Self.T;
+        let tref: &mut R#Self.T;
+        let y: R#Self.T;
+
+        addr = get_txn_sender();
+        t = Self.new(0);
+        Self.publish(move(t));
+        tref = borrow_global<T>(move(addr));
+        y = *move(tref);
+        return;
+    }
+
+}
+
+//! new-transaction
+
+import {{default}}.Token;
+
+main() {
+    Token.test();
+    return;
+}

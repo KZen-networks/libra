@@ -5,15 +5,18 @@ use crate::{
     chained_bft::{
         block_storage::{BlockReader, BlockStore},
         common::{Payload, Round},
+        consensus_types::{
+            proposal_info::{ProposalInfo, ProposerInfo},
+            timeout_msg::TimeoutMsg,
+        },
         event_processor::{EventProcessor, ProcessProposalResult},
         liveness::{
             local_pacemaker::{ExponentialTimeInterval, LocalPacemaker},
             pacemaker::{NewRoundEvent, Pacemaker},
             pacemaker_timeout_manager::HighestTimeoutCertificates,
             proposal_generator::ProposalGenerator,
-            proposer_election::{ProposalInfo, ProposerElection, ProposerInfo},
+            proposer_election::ProposerElection,
             rotating_proposer_election::RotatingProposer,
-            timeout_msg::TimeoutMsg,
         },
         network::{
             BlockRetrievalRequest, ChunkRetrievalRequest, ConsensusNetworkImpl, NetworkReceivers,
@@ -37,6 +40,7 @@ use futures::{
 use nextgen_crypto::ed25519::*;
 use types::validator_signer::ValidatorSigner;
 
+use crate::chained_bft::consensus_types::sync_info::SyncInfo;
 use config::config::ConsensusConfig;
 use logger::prelude::*;
 use std::{
@@ -183,7 +187,7 @@ impl<T: Payload, P: ProposerInfo> ChainedBftSMR<T, P> {
         while let Some(proposal_info) = receiver.next().await {
             let guard = event_processor.read().compat().await.unwrap();
             match guard.process_proposal(proposal_info).await {
-                ProcessProposalResult::Done => (),
+                ProcessProposalResult::Done(_) => (),
                 // Spawn a new task that would start retrieving the missing
                 // blocks in the background.
                 ProcessProposalResult::NeedFetch(deadline, proposal) => executor.spawn(
@@ -258,6 +262,16 @@ impl<T: Payload, P: ProposerInfo> ChainedBftSMR<T, P> {
         while let Some(timeout_msg) = receiver.next().await {
             let mut guard = event_processor.write().compat().await.unwrap();
             guard.process_timeout_msg(timeout_msg).await;
+        }
+    }
+
+    async fn process_sync_info_msgs(
+        mut receiver: channel::Receiver<SyncInfo>,
+        event_processor: ConcurrentEventProcessor<T, P>,
+    ) {
+        while let Some(sync_info) = receiver.next().await {
+            let mut guard = event_processor.write().compat().await.unwrap();
+            guard.process_sync_info_msg(sync_info).await;
         }
     }
 
@@ -382,6 +396,13 @@ impl<T: Payload, P: ProposerInfo> ChainedBftSMR<T, P> {
             .boxed()
             .unit_error()
             .compat(),
+        );
+
+        executor.spawn(
+            Self::process_sync_info_msgs(network_receivers.sync_info_msgs, event_processor.clone())
+                .boxed()
+                .unit_error()
+                .compat(),
         );
     }
 }

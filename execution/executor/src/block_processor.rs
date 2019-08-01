@@ -419,8 +419,8 @@ where
         Ok(())
     }
 
-    /// Verifies the proofs using provided ledger info. Also verifies that the version of the first
-    /// transaction matches the lastest committed transaction. If the first few transaction happens
+    /// Verifies proofs using provided ledger info. Also verifies that the version of the first
+    /// transaction matches the latest committed transaction. If the first few transaction happens
     /// to be older, returns how many need to be skipped and the first version to be committed.
     fn verify_chunk(
         &self,
@@ -531,16 +531,16 @@ where
 
         let num_txns_to_commit = txns_to_commit.len() as u64;
         {
-            let time = std::time::Instant::now();
+            let _timer = OP_COUNTERS.timer("storage_save_transactions_time_s");
+            OP_COUNTERS.observe(
+                "storage_save_transactions.count",
+                txns_to_commit.len() as f64,
+            );
             self.storage_write_client.save_transactions(
                 txns_to_commit,
                 version + 1 - num_txns_to_commit, /* first_version */
                 Some(ledger_info_with_sigs.clone()),
             )?;
-            OP_COUNTERS.observe(
-                "storage_save_transactions_time_us",
-                time.elapsed().as_micros() as f64,
-            );
         }
         // Only bump the counter when the commit succeeds.
         OP_COUNTERS.inc_by("num_accounts", num_accounts_created);

@@ -11,10 +11,15 @@ use serde::{Deserialize, Serialize};
 use crate::ROOT_NIBBLE_HEIGHT;
 use std::{fmt, iter::FromIterator};
 
+<<<<<<< HEAD
 /// NibblePath defines a path in Merkle tree in the unit of nibble (4 bits)
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
+=======
+/// NibblePath defines a path in Merkle tree in the unit of nibble (4 bits).
+#[derive(Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+>>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
 pub struct NibblePath {
-    /// the underlying bytes that stores the path, 2 nibbles per byte. If the number of nibbles is
+    /// The underlying bytes that stores the path, 2 nibbles per byte. If the number of nibbles is
     /// odd, the second half of the last byte must be 0.
     bytes: Vec<u8>,
     /// Indicates the total number of nibbles in bytes. Either `bytes.len() * 2 - 1` or
@@ -22,7 +27,7 @@ pub struct NibblePath {
     num_nibbles: usize,
 }
 
-/// Support debug format by concatenating nibbles literally. For example, [0x12, 0xa0] with 3
+/// Supports debug format by concatenating nibbles literally. For example, [0x12, 0xa0] with 3
 /// nibbles will be printed as "12a".
 impl fmt::Debug for NibblePath {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -61,7 +66,11 @@ impl NibblePath {
         NibblePath { bytes, num_nibbles }
     }
 
+<<<<<<< HEAD
     /// Adds a nibble to the end of nibble path.
+=======
+    /// Adds a nibble to the end of the nibble path.
+>>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
     pub fn push(&mut self, nibble: u8) {
         assert!(nibble < 16);
         assert!(ROOT_NIBBLE_HEIGHT > self.num_nibbles);
@@ -73,6 +82,26 @@ impl NibblePath {
         self.num_nibbles += 1;
     }
 
+<<<<<<< HEAD
+=======
+    /// Pops a nibble from the end of the nibble path.
+    pub fn pop(&mut self) -> Option<u8> {
+        let poped_nibble = if self.num_nibbles % 2 == 0 {
+            self.bytes.last_mut().map(|last_byte| {
+                let nibble = *last_byte & 0x0f;
+                *last_byte &= 0xf0;
+                nibble
+            })
+        } else {
+            self.bytes.pop().map(|byte| byte >> 4)
+        };
+        if poped_nibble.is_some() {
+            self.num_nibbles -= 1;
+        }
+        poped_nibble
+    }
+
+>>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
     /// Get the i-th bit.
     fn get_bit(&self, i: usize) -> bool {
         assert!(i / 4 < self.num_nibbles);

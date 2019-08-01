@@ -129,9 +129,9 @@ impl TransactionStore {
         MempoolAddTransactionStatus::new(MempoolAddTransactionStatusCode::Valid, "".to_string())
     }
 
-    /// Check whether the queue size >= threshold in config.
+    /// Check if mempool can handle new insertion requests
     pub(crate) fn health_check(&self) -> bool {
-        self.system_ttl_index.size() <= self.capacity
+        self.system_ttl_index.size() < self.capacity || self.parking_lot_index.size() > 0
     }
 
     /// checks if Mempool is full
@@ -166,8 +166,15 @@ impl TransactionStore {
         if let Some(txns) = self.transactions.get_mut(&txn.get_sender()) {
             if let Some(current_version) = txns.get_mut(&txn.get_sequence_number()) {
                 is_update = true;
-                // TODO: do we need to ensure the rest of content hasn't changed
-                if txn.get_gas_price() <= current_version.get_gas_price() {
+                if current_version.txn.max_gas_amount() == txn.txn.max_gas_amount()
+                    && current_version.txn.payload() == txn.txn.payload()
+                    && current_version.txn.expiration_time() == txn.txn.expiration_time()
+                    && current_version.get_gas_price() < txn.get_gas_price()
+                {
+                    self.priority_index.remove(&current_version);
+                    current_version.txn = txn.txn.clone();
+                    self.priority_index.insert(&current_version);
+                } else {
                     status = MempoolAddTransactionStatus::new(
                         MempoolAddTransactionStatusCode::InvalidUpdate,
                         format!(
@@ -176,10 +183,6 @@ impl TransactionStore {
                             current_version.get_gas_price(),
                         ),
                     );
-                } else {
-                    self.priority_index.remove(&current_version);
-                    current_version.txn = txn.txn.clone();
-                    self.priority_index.insert(&current_version);
                 }
             }
         }

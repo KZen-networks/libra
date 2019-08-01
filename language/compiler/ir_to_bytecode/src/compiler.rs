@@ -28,8 +28,14 @@ use vm::{
         FieldDefinitionIndex, FunctionDefinition, FunctionDefinitionIndex, FunctionHandle,
         FunctionHandleIndex, FunctionSignature, FunctionSignatureIndex, Kind, LocalsSignature,
         LocalsSignatureIndex, MemberCount, ModuleHandle, ModuleHandleIndex, SignatureToken,
+<<<<<<< HEAD
         StringPoolIndex, StructDefinition, StructDefinitionIndex, StructHandle, StructHandleIndex,
         TableIndex, TypeSignature, TypeSignatureIndex, NO_TYPE_ACTUALS, SELF_MODULE_NAME,
+=======
+        StringPoolIndex, StructDefinition, StructDefinitionIndex, StructFieldInformation,
+        StructHandle, StructHandleIndex, TableIndex, TypeSignature, TypeSignatureIndex,
+        NO_TYPE_ACTUALS, SELF_MODULE_NAME,
+>>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
     },
     printers::TableAccess,
 };
@@ -1209,10 +1215,13 @@ impl<S: Scope + Sized> Compiler<S> {
         fields: &Fields<Type>,
     ) -> Result<StructDefinition> {
         let field_count = fields.len();
-        let struct_def = StructDefinition {
-            struct_handle: sh_idx,
+        let field_information = StructFieldInformation::Declared {
             field_count: (field_count as MemberCount),
             fields: self.scope.get_next_field_definition_index()?,
+        };
+        let struct_def = StructDefinition {
+            struct_handle: sh_idx,
+            field_information,
         };
 
         if field_count > FIELDS_MAX_SIZE {

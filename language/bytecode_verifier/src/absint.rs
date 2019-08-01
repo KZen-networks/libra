@@ -19,6 +19,16 @@ pub enum JoinResult {
 }
 
 #[derive(Clone)]
+<<<<<<< HEAD
+=======
+pub enum BlockPrecondition<State> {
+    State(State),
+    /// joining postconditions of previous blocks ended in failure
+    JoinFailure,
+}
+
+#[derive(Clone)]
+>>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
 pub enum BlockPostcondition {
     /// Analyzing block was successful
     Success,
@@ -30,9 +40,25 @@ pub enum BlockPostcondition {
 #[derive(Clone)]
 pub struct BlockInvariant<State> {
     /// Precondition of the block
+<<<<<<< HEAD
     pre: State,
     /// Postcondition of the block---just success/error for now
     post: BlockPostcondition,
+=======
+    pre: BlockPrecondition<State>,
+    /// Postcondition of the block---just success/error for now
+    post: BlockPostcondition,
+}
+
+impl<State> BlockInvariant<State> {
+    pub fn pre(&self) -> &BlockPrecondition<State> {
+        &self.pre
+    }
+
+    pub fn post(&self) -> &BlockPostcondition {
+        &self.post
+    }
+>>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
 }
 
 /// A map from block id's to the pre/post of each block after a fixed point is reached.
@@ -73,13 +99,22 @@ pub trait AbstractInterpreter: TransferFunctions {
         cfg: &VMControlFlowGraph,
     ) -> InvariantMap<Self::State> {
         let mut inv_map: InvariantMap<Self::State> = InvariantMap::new();
+<<<<<<< HEAD
         let entry_block_id = cfg.entry_block_id();
         // seed worklist/precondition map with initial block/state
+=======
+        let entry_block_id = 0; // 0 is always the entry block
+                                // seed worklist/precondition map with initial block/state
+>>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
         let mut work_list = vec![entry_block_id];
         inv_map.insert(
             entry_block_id,
             BlockInvariant {
+<<<<<<< HEAD
                 pre: initial_state,
+=======
+                pre: BlockPrecondition::State(initial_state),
+>>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
                 post: BlockPostcondition::Success,
             },
         );
@@ -98,7 +133,18 @@ pub trait AbstractInterpreter: TransferFunctions {
                 None => unreachable!("Missing invariant for block {}", block_id),
             };
 
+<<<<<<< HEAD
             let mut state = block_invariant.pre.clone();
+=======
+            let mut state = match block_invariant.pre {
+                BlockPrecondition::State(s) => s.clone(),
+                BlockPrecondition::JoinFailure =>
+                // Can't analyze the block from a failing precondition
+                {
+                    continue
+                }
+            };
+>>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
             let block_ends_in_error = self
                 .execute_block(block_id, &mut state, &function_view, &cfg)
                 .is_err();
@@ -116,7 +162,14 @@ pub trait AbstractInterpreter: TransferFunctions {
             for next_block_id in &block.successors {
                 match inv_map.get_mut(next_block_id) {
                     Some(next_block_invariant) => {
+<<<<<<< HEAD
                         let join_result = next_block_invariant.pre.join(&state);
+=======
+                        let join_result = match &mut next_block_invariant.pre {
+                            BlockPrecondition::State(old_pre) => old_pre.join(&state),
+                            BlockPrecondition::JoinFailure => JoinResult::Error,
+                        };
+>>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
                         match join_result {
                             JoinResult::Unchanged => {
                                 // Pre is the same after join. Reanalyzing this block would produce
@@ -129,7 +182,11 @@ pub trait AbstractInterpreter: TransferFunctions {
                             }
                             JoinResult::Error => {
                                 // This join produced an error. Don't schedule the block.
+<<<<<<< HEAD
                                 next_block_invariant.post = BlockPostcondition::Error;
+=======
+                                next_block_invariant.pre = BlockPrecondition::JoinFailure;
+>>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
                                 continue;
                             }
                         }
@@ -140,7 +197,11 @@ pub trait AbstractInterpreter: TransferFunctions {
                         inv_map.insert(
                             *next_block_id,
                             BlockInvariant {
+<<<<<<< HEAD
                                 pre: state.clone(),
+=======
+                                pre: BlockPrecondition::State(state.clone()),
+>>>>>>> 05c40c977badf052b9efcc4e0180e3628bee2847
                                 post: BlockPostcondition::Success,
                             },
                         );
